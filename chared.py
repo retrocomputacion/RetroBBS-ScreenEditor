@@ -29,7 +29,7 @@ grid_en = True
 over_en = False
 old_c = [0,0]
 old_m = np.array([0,-1,-1])
-mode = 0            # Mode: 0 = Draw 1 = Flood fill 2 = Text 3 = Recolor
+mode = 0            # Mode: 0 = Draw 1 = Flood fill 2 = Text 3 = Recolor 4 = Select 5 = Brush
 text_c = [0,0]
 
 filetype = ['sequential','.mseq']
@@ -242,90 +242,6 @@ def set_mode(sender):
             dpg.configure_item('clip', show=True)
         clipboard[2] = [-1,-1]
 
-    # if sender == 'draw_b':
-    #     mode = 0
-    #     dpg.configure_item('draw_b', tint_color=(255,255,255))
-    #     dpg.configure_item('fill_b', tint_color=(128,128,128))
-    #     dpg.configure_item('text_b', tint_color=(128,128,128))
-    #     dpg.configure_item('paint_b', tint_color=(128,128,128))
-    #     dpg.configure_item('select_b', tint_color=(128,128,128))
-    #     dpg.configure_item('brush_b', tint_color=(128,128,128))
-    #     dpg.configure_item('flip', show=False)
-    #     dpg.configure_item('text_handler', show=False)
-    #     dpg.configure_item('cursor', show=False)
-    #     dpg.configure_item('selection', show=False)
-    #     if clipboard[0] is not None:
-    #         dpg.configure_item('clip', show=False)
-    # elif sender == 'fill_b':
-    #     mode = 1
-    #     dpg.configure_item('draw_b', tint_color=(128,128,128))
-    #     dpg.configure_item('fill_b', tint_color=(255,255,255))
-    #     dpg.configure_item('text_b', tint_color=(128,128,128))
-    #     dpg.configure_item('paint_b', tint_color=(128,128,128))
-    #     dpg.configure_item('select_b', tint_color=(128,128,128))
-    #     dpg.configure_item('text_handler', show=False)
-    #     dpg.configure_item('brush_b', tint_color=(128,128,128))
-    #     dpg.configure_item('cursor', show=False)
-    #     dpg.configure_item('selection', show=False)
-    #     dpg.configure_item('flip', show=False)
-    #     if clipboard[0] is not None:
-    #         dpg.configure_item('clip', show=False)
-    # elif sender == 'text_b':
-    #     mode = 2
-    #     dpg.configure_item('draw_b', tint_color=(128,128,128))
-    #     dpg.configure_item('text_b', tint_color=(255,255,255))
-    #     dpg.configure_item('fill_b', tint_color=(128,128,128))
-    #     dpg.configure_item('paint_b', tint_color=(128,128,128))
-    #     dpg.configure_item('select_b', tint_color=(128,128,128))
-    #     dpg.configure_item('brush_b', tint_color=(128,128,128))
-    #     dpg.configure_item('text_handler', show=True)
-    #     dpg.configure_item('cursor', show=True)
-    #     dpg.configure_item('selection', show=False)
-    #     dpg.configure_item('flip', show=False)
-    #     if clipboard[0] is not None:
-    #         dpg.configure_item('clip', show=False)
-    # elif sender == 'paint_b':
-    #     mode = 3
-    #     dpg.configure_item('draw_b', tint_color=(128,128,128))
-    #     dpg.configure_item('paint_b', tint_color=(255,255,255))
-    #     dpg.configure_item('fill_b', tint_color=(128,128,128))
-    #     dpg.configure_item('text_b', tint_color=(128,128,128))
-    #     dpg.configure_item('select_b', tint_color=(128,128,128))
-    #     dpg.configure_item('brush_b', tint_color=(128,128,128))
-    #     dpg.configure_item('text_handler', show=False)
-    #     dpg.configure_item('cursor', show=False)
-    #     dpg.configure_item('selection', show=False)
-    #     dpg.configure_item('flip', show=False)
-    #     if clipboard[0] is not None:
-    #         dpg.configure_item('clip', show=False)
-    # elif sender == 'select_b':
-    #     mode = 4
-    #     dpg.configure_item('draw_b', tint_color=(128,128,128))
-    #     dpg.configure_item('select_b', tint_color=(255,255,255))
-    #     dpg.configure_item('fill_b', tint_color=(128,128,128))
-    #     dpg.configure_item('text_b', tint_color=(128,128,128))
-    #     dpg.configure_item('paint_b', tint_color=(128,128,128))
-    #     dpg.configure_item('brush_b', tint_color=(128,128,128))
-    #     dpg.configure_item('text_handler', show=False)
-    #     dpg.configure_item('cursor', show=False)
-    #     dpg.configure_item('selection', show=True, pmin=(0,0), pmax=(0,0))
-    #     dpg.configure_item('flip', show=False)
-    #     if clipboard[0] is not None:
-    #         dpg.configure_item('clip', show=False)
-    # elif sender == 'brush_b' and clipboard[0] is not None:
-    #     mode = 5
-    #     dpg.configure_item('draw_b', tint_color=(128,128,128))
-    #     dpg.configure_item('brush_b', tint_color=(255,255,255))
-    #     dpg.configure_item('fill_b', tint_color=(128,128,128))
-    #     dpg.configure_item('text_b', tint_color=(128,128,128))
-    #     dpg.configure_item('paint_b', tint_color=(128,128,128))
-    #     dpg.configure_item('select_b', tint_color=(128,128,128))
-    #     dpg.configure_item('text_handler', show=False)
-    #     dpg.configure_item('cursor', show=False)
-    #     dpg.configure_item('selection', show=False)
-    #     dpg.configure_item('clip', show=True)
-    #     dpg.configure_item('flip', show=True)
-    #     clipboard[2] = [-1,-1]
 
 
 # Process mouse clicks for file dialog image preview
@@ -512,8 +428,6 @@ def short_handler(sender, data):
         elif dpg.is_key_down(dpg.mvKey_RShift) or dpg.is_key_down(dpg.mvKey_Shift):
             if data == 268:
                 clear_screen()
-        # else:
-        #     print(chr(data))
 
 # Text mode keyboard shortcuts handler:
 def text_mode(sender, data):
@@ -781,7 +695,6 @@ def save_seq(filename):
             bin = b''
             cell = matrix[col,r].copy()
             cell[1:] += 1
-            # print(cell,current, np.array_equal(cell,current))
             if not np.array_equal(cell,current):
                 #bin += buffer
                 if buffer != b'':
@@ -904,10 +817,6 @@ with dpg.window(tag="MainW", no_scrollbar= True):
             dpg.add_menu_item(label="Save As...", callback=show_save, user_data='s_seq')
             dpg.add_separator()
             dpg.add_menu_item(label='Open overlay...', callback=show_dialog)
-
-            # with dpg.menu(label="Settings"):
-            #     dpg.add_menu_item(label="Setting 1", callback=print_me, check=True)
-            #     dpg.add_menu_item(label="Setting 2", callback=print_me)
             dpg.add_menu_item(label="Quit", callback= lambda: dpg.configure_item("quit_id", show = True))
 
         with dpg.menu(label="Help"):
@@ -1008,9 +917,6 @@ dpg.show_viewport()
 dpg.set_primary_window("MainW",True)
 
 while dpg.is_dearpygui_running() and not Quit:
-    # insert here any code you would like to run in the render loop
-    # you can manually stop by using stop_dearpygui()
-    #print("this will run every frame")
     dpg.render_dearpygui_frame()
 
 dpg.destroy_context()
