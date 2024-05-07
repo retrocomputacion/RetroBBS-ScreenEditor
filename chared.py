@@ -59,7 +59,7 @@ def show_dialog():
 def print_me(sender, app_data):
     print(f"Menu Item: {sender} - {app_data}")
 
-def draw_tile(sender, app_data):
+def draw_tile():
     global raw_screen
     
     x = int((dpg.get_mouse_pos()[0]-30)//16)*16
@@ -67,7 +67,7 @@ def draw_tile(sender, app_data):
     # sdraw.rectangle([(x,y),(x+15,y+15)],fill=(255,0,0))
     raw_screen[y:y+16, x:x+16] = raw_tile
 
-def select_char(sender, app_data):
+def select_char(sender):
     global curchar, raw_tile, raw_prev
     dpg.configure_item('b'+str(curchar),tint_color=(128,128,128))
     curchar = int(sender[1:])
@@ -77,6 +77,8 @@ def select_char(sender, app_data):
     tmp_tile = np.asarray(Image.fromarray((raw_tile*255).astype('uint8')).resize([32,32], resample=Image.NEAREST), dtype=np.float32)/255
     raw_prev[:] = tmp_tile[:]
     dpg.configure_item(sender,tint_color=(255,255,128))
+    if mode > 1:
+        set_mode('draw_b')
 
 def clear_screen():
     global matrix, raw_screen, undobuffer, redobuffer, background
@@ -173,7 +175,7 @@ def swap_colors():
     tmp_tile = np.asarray(Image.fromarray((raw_tile*255).astype('uint8')).resize([32,32], resample=Image.NEAREST), dtype=np.float32)/255
     raw_prev[:] = tmp_tile[:]
 
-def color_selector(sender, app_data):
+def color_selector(sender):
     color_count = len(palette)
     ix = int(sender[5:])
     wpos = (200,300) if ix == 2 else (700,300)
@@ -616,6 +618,12 @@ def save_file(sender, app_data, user_data):
     #     cfile.close
     # return
 
+def new_work():
+        clear_screen()
+        undobuffer.clear()
+        dpg.configure_item('save',show=False)
+
+
 def open_seq(sender, app_data, user_data):
     global background,colors, matrix, undobuffer, redobuffer
     filename = app_data['file_path_name']
@@ -812,6 +820,7 @@ with dpg.window(tag="MainW", no_scrollbar= True):
 
     with dpg.menu_bar():
         with dpg.menu(label="File"):
+            dpg.add_menu_item(label='New', callback=new_work)
             dpg.add_menu_item(label='Open', callback=show_open)
             dpg.add_menu_item(label="Save", tag='save', show=False)
             dpg.add_menu_item(label="Save As...", callback=show_save, user_data='s_seq')
