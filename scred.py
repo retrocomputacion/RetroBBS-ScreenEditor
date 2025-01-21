@@ -819,8 +819,9 @@ def open_seq(sender, app_data, user_data):
                 if cmd:
                     if char == 0x90:
                         char = fo.read(3)
-                        background = char[2]
+                        background = char[2]+(1 if screen != 'Commodore 64' else 0)
                         colors[0] = background
+                        border = char[1]+(1 if screen != 'Commodore 64' else 0)
                         dpg.set_value('color0', palette[colors[0]])
                         dpg.set_value('color2', palette[background])
                         dpg.set_value('color3', palette[char[1]])
@@ -930,10 +931,12 @@ def save_seq(filename):
         current = [modes[screen_mode]['default'][0],background,-1]
         empty = [modes[screen_mode]['default'][0],background]
     else:
-        bg = background+1+16
-        bin = b'\x01'+bg.to_bytes(1,'big')+b'\x0c'  # Set paper color, clear screen
-        current = [modes[screen_mode]['default'][0],bg-16,-1]
-        empty = [modes[screen_mode]['default'][0],bg-16]
+        bg = background+1
+        bo = border+1
+        co = int(matrix[0,0][2]+1)
+        bin = b'\xff\x90\x00'+bo.to_bytes(1,'big')+bg.to_bytes(1,'big')+b'\x01'+co.to_bytes(1,'big')+b'\xfe\x0c'  # Set paper color, clear screen
+        current = [modes[screen_mode]['default'][0],bg,-1]
+        empty = [modes[screen_mode]['default'][0],bg]
     default = modes[screen_mode]['default'][0]
     rvs = False
     output.append(bin)
@@ -1029,7 +1032,7 @@ def save_seq(filename):
                 else:
                     output.append(scr2pet(c))
                 buffer = b''
-        if buffer != b'' and r < mr:
+        if buffer != b'' and r < mr-1:
             output.append(b'\x0d')
             rvs = False
     with open(filename,'wb') as file:
