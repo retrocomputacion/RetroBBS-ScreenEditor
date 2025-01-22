@@ -751,7 +751,7 @@ def new_work():
 
 
 def open_seq(sender, app_data, user_data):
-    global background,colors, matrix, undobuffer, redobuffer
+    global background,colors, matrix, undobuffer, redobuffer, border
     filename = app_data['file_path_name']
     with open(filename,'rb') as fo:
         c = 0
@@ -765,67 +765,81 @@ def open_seq(sender, app_data, user_data):
             if not char:
                 break
             char = char[0]
-            if screen_mode != 'Commodore 64':
-                if char == 1:   # Colors/Extended gfx
-                    char = fo.read(1)
-                    if not char:
-                        break
-                    char = char[0]
-                    if char < 16:
-                        colors[1] = char-1
-                        dpg.set_value('color1', palette[colors[1]])
-                    elif char < 32:
-                        colors[0] = char-17
-                        dpg.set_value('color0', palette[colors[0]])
-                    elif char in range(0x40,0x60):
-                        matrix[c,r]=[char-0x40,colors[0],colors[1]]
-                        c += 1
-                        if c > mc-1:
-                            c = 0
-                            r = r+1 if r < mr-1 else mr-1
-                    elif char in (0x60,0x61):
-                        matrix[c,r]=[char+0x9e,colors[0],colors[1]]
-                        c += 1
-                        if c > mc-1:
-                            c = 0
-                            r = r+1 if r < mr-1 else mr-1
-                elif char == 0x0c:  #CLS
-                    c = 0
-                    r = 0
-                    background = colors[0]
-                    dpg.set_value('color2', palette[colors[0]])
-                    matrix[:] = [32,colors[0],colors[1]]
-                elif char == 0x0d: #CR
-                    c = 0
-                    r = r+1 if r < mr-1 else mr-1
-                elif char == 0x12:  # Insert
-                    matrix[:,r] = np.insert(matrix[:,r],(c*3),[32,colors[0],colors[1]]).reshape([mc+1,3])[:-1]
-                elif char == 0x1d:  # CRSR left
-                    c -= 1
-                    if c < 0:
-                        c = 0
-                        r = r-1 if r > 0 else 0
-                elif char >= 32:    #Chars
-                    matrix[c,r]=[char,colors[0],colors[1]]
-                    c += 1
-                    if c > mc-1:
-                        c = 0
-                        r = r+1 if r < mr-1 else r
+            if char == 255:    # CMD_ON
+                cmd = True
+            if char == 254:    # CMD_OFF
+                cmd = False
+            if cmd:
+                if char == 0x90:
+                    char = fo.read(3)
+                    background = char[2]-(1 if screen_mode != 'Commodore 64' else 0)
+                    colors[0] = background
+                    border = char[1]-(1 if screen_mode != 'Commodore 64' else 0)
+                    dpg.set_value('color0', palette[colors[0]])
+                    dpg.set_value('color2', palette[background])
+                    dpg.set_value('color3', palette[border])
             else:
-                if char == 255:    # CMD_ON
-                    cmd = True
-                if char == 254:    # CMD_OFF
-                    cmd = False
-                if cmd:
-                    if char == 0x90:
-                        char = fo.read(3)
-                        background = char[2]+(1 if screen != 'Commodore 64' else 0)
-                        colors[0] = background
-                        border = char[1]+(1 if screen != 'Commodore 64' else 0)
-                        dpg.set_value('color0', palette[colors[0]])
-                        dpg.set_value('color2', palette[background])
-                        dpg.set_value('color3', palette[char[1]])
+                if screen_mode != 'Commodore 64':
+                    if char == 1:   # Colors/Extended gfx
+                        char = fo.read(1)
+                        if not char:
+                            break
+                        char = char[0]
+                        if char < 16:
+                            colors[1] = char-1
+                            dpg.set_value('color1', palette[colors[1]])
+                        elif char < 32:
+                            colors[0] = char-17
+                            dpg.set_value('color0', palette[colors[0]])
+                        elif char in range(0x40,0x60):
+                            matrix[c,r]=[char-0x40,colors[0],colors[1]]
+                            c += 1
+                            if c > mc-1:
+                                c = 0
+                                r = r+1 if r < mr-1 else mr-1
+                        elif char in (0x60,0x61):
+                            matrix[c,r]=[char+0x9e,colors[0],colors[1]]
+                            c += 1
+                            if c > mc-1:
+                                c = 0
+                                r = r+1 if r < mr-1 else mr-1
+                    elif char == 0x0c:  #CLS
+                        c = 0
+                        r = 0
+                        background = colors[0]
+                        dpg.set_value('color2', palette[colors[0]])
+                        matrix[:] = [32,colors[0],colors[1]]
+                    elif char == 0x0d: #CR
+                        c = 0
+                        r = r+1 if r < mr-1 else mr-1
+                    elif char == 0x12:  # Insert
+                        matrix[:,r] = np.insert(matrix[:,r],(c*3),[32,colors[0],colors[1]]).reshape([mc+1,3])[:-1]
+                    elif char == 0x1d:  # CRSR left
+                        c -= 1
+                        if c < 0:
+                            c = 0
+                            r = r-1 if r > 0 else 0
+                    elif char >= 32:    #Chars
+                        matrix[c,r]=[char,colors[0],colors[1]]
+                        c += 1
+                        if c > mc-1:
+                            c = 0
+                            r = r+1 if r < mr-1 else r
                 else:
+                    # if char == 255:    # CMD_ON
+                    #     cmd = True
+                    # if char == 254:    # CMD_OFF
+                    #     cmd = False
+                    # if cmd:
+                    #     if char == 0x90:
+                    #         char = fo.read(3)
+                    #         background = char[2]+(1 if screen != 'Commodore 64' else 0)
+                    #         colors[0] = background
+                    #         border = char[1]+(1 if screen != 'Commodore 64' else 0)
+                    #         dpg.set_value('color0', palette[colors[0]])
+                    #         dpg.set_value('color2', palette[background])
+                    #         dpg.set_value('color3', palette[char[1]])
+                    # else:
                     if char.to_bytes(1,'big') in petcolors:    #Colors
                         colors[1] = petcolors.index(char.to_bytes(1,'big'))
                         dpg.set_value('color1', palette[colors[1]])
