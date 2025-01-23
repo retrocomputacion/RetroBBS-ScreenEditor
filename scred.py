@@ -266,6 +266,10 @@ def set_mode(sender):
         dpg.configure_item('text_handler', show=mode==2)
         dpg.configure_item('cursor', show=mode==2)
         dpg.configure_item('selection', show=mode==4, pmin=(0,0), pmax=(0,0))
+        if mode in [2,4]:
+            dpg.configure_item('charbrush', show=False)
+        else:
+            dpg.configure_item('charbrush', show=True)
         if clipboard[0] is not None:
             dpg.configure_item('clip', show=False)
     elif sender == 'brush_b' and clipboard[0] is not None:
@@ -479,14 +483,20 @@ def drag_handler(sender, app_data):
             dpg.configure_item('bgcolor', default_value=palette[matrix[c,r,1]])
             dpg.configure_item('fgcolor', default_value=palette[matrix[c,r,2]])
             old_m = matrix[c,r]
+        x = c*16
+        y = r*16
         if mode == 5:
-            x = c*16
-            y = r*16
+            # x = c*16
+            # y = r*16
             cw = clipboard[1].shape[1]
             ch = clipboard[1].shape[0]
             x1 = x-((cw//32)*16)
             y1 = y-((ch//32)*16)
             dpg.configure_item('clip',pmin=(x1,y1), pmax=(x1+cw,y1+ch))
+        else:
+            x1 = x
+            y1 = y
+            dpg.configure_item('charbrush',pmin=(x1,y1), pmax=(x1+16,y1+16))
 
 def release_handler():
     global change, undobuffer, redobuffer, clipboard
@@ -826,20 +836,6 @@ def open_seq(sender, app_data, user_data):
                             c = 0
                             r = r+1 if r < mr-1 else r
                 else:
-                    # if char == 255:    # CMD_ON
-                    #     cmd = True
-                    # if char == 254:    # CMD_OFF
-                    #     cmd = False
-                    # if cmd:
-                    #     if char == 0x90:
-                    #         char = fo.read(3)
-                    #         background = char[2]+(1 if screen != 'Commodore 64' else 0)
-                    #         colors[0] = background
-                    #         border = char[1]+(1 if screen != 'Commodore 64' else 0)
-                    #         dpg.set_value('color0', palette[colors[0]])
-                    #         dpg.set_value('color2', palette[background])
-                    #         dpg.set_value('color3', palette[char[1]])
-                    # else:
                     if char.to_bytes(1,'big') in petcolors:    #Colors
                         colors[1] = petcolors.index(char.to_bytes(1,'big'))
                         dpg.set_value('color1', palette[colors[1]])
@@ -900,6 +896,9 @@ def open_seq(sender, app_data, user_data):
         sync_matrix()
         undobuffer.clear()
         redobuffer.clear()
+        pre = 'b' if screen_mode == 'MSX Screen 2 - RetroTerm' else 'd' if charset == 'Upper/GFX' else 'e'
+        select_char(pre+str(modes[screen_mode]['default'][0]))
+
         dpg.configure_item('save',show=True,callback=lambda: save_file(sender,app_data,[filename]))
 
         
@@ -1131,6 +1130,7 @@ with dpg.window(tag="MainW", no_scrollbar= True):
         with dpg.group(horizontal_spacing=0, pos=(30,50)):
             with dpg.drawlist(width=512, height=384, tag='mainimg', callback= flood_fill):
                 dpg.draw_image('screen', (0,0), (640,400), uv_min=(0,0), uv_max=(1,1))
+                dpg.draw_image('prevtile',(0,0),(16,16), uv_min=(0,0), uv_max=(1,1), tag='charbrush')
                 dpg.draw_image('oimg', (0,0), (640,400), uv_min=(0,0), uv_max=(1,1), tag='overlay', show=False)
                 with dpg.draw_layer(label='grid', tag='grid'):
                     for x in range(0,640,16):
