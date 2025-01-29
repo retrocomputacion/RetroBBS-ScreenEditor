@@ -947,7 +947,7 @@ def save_seq(filename):
         bg = background+1
         bo = border+1
         co = int(matrix[0,0][2]+1)
-        bin = b'\xff\x90\x00'+bo.to_bytes(1,'big')+bg.to_bytes(1,'big')+b'\x01'+co.to_bytes(1,'big')+b'\xfe\x0c'  # Set paper color, clear screen
+        bin = b'\xff\x90\x00'+bo.to_bytes(1,'big')+bg.to_bytes(1,'big')+b'\xfe\x01'+co.to_bytes(1,'big')+b'\x0c'  # Set paper color, clear screen
         current = [modes[screen_mode]['default'][0],bg,-1]
         empty = [modes[screen_mode]['default'][0],bg]
     default = modes[screen_mode]['default'][0]
