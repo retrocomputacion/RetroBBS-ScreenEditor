@@ -21,18 +21,22 @@ raw_tile = None # Current tile texture
 raw_prev = None # Current tile preview texture
 raw_icons = []  # Icon textures
 raw_icons16 = [] # Small icon textures
+semi_tex = []   # Semigraphic mode texture
 curchar = 32
 colors = [0,14]     # Bg/Fg (-1)
 background = 0      # Initial Background color 
 border = 0          # Initial Border color
 matrix = np.full((32,24,3),[32,0,14])    #[[0,[0,14]]]*768   # Tile/Bg/Fg (-1)
+semimatrix = np.full((32,24),0)
 tmpmat = None       # Temporal Undo matrix
+tmpsemimat = None   # Temporal Undo semigraphic matrix
 change = False
 grid_en = True
 over_en = False
 old_c = [0,0]
 old_m = np.array([0,-1,-1])
 mode = 0            # Mode: 0 = Draw 1 = Flood fill 2 = Text 3 = Recolor 4 = Select 5 = Brush 6 = Color pick
+semimode = False    # Semigraphics draw mode
 p_mode = 0          # Previous mode
 text_c = [0,0]
 
@@ -48,6 +52,43 @@ modes = {'MSX Screen 2 - RetroTerm':{'geo':(32,24),'palette':[[0x00,0x00,0x00],[
 
 petcolors = [b'\x90',b'\x05',b'\x1c',b'\x9f',b'\x9c',b'\x1e',b'\x1f',b'\x9e',b'\x81',b'\x95',b'\x96',b'\x97',b'\x98',b'\x99',b'\x9a',b'\x9b']
 
+TMLColors = {'MSX Screen 2 - RetroTerm':['','<BLACK>','<GREEN>','<LTGREEN>','<BLUE>','<LTBLUE>','<DRED>','<CYAN>','<RED>',
+                                         '<PINK>','<YELLOW>','<LTYELLOW>','<DGREEN>','<PURPLE>','<GREY>','<WHITE>'],
+             'Commodore 64':['<BLACK>','<WHITE>','<RED>','<CYAN>','<PURPLE>','<GREEN>','<BLUE>','<YELLOW>',
+                             '<ORANGE>','<BROWN>','<PINK>','<GREY1>','<GREY2>','<LTGREEN>','<LTBLUE>','<GREY3>']}
+
+TMLchars = {'MSX Screen 2 - RetroTerm':{
+            0x3c:'&lt;', 0x3e:'&gt;',
+            0x9b:'<POUND>', 0xe3:'<PI>', 0xd7:'<HASH>', 0x17:'<HLINE>', 0x16:'<VLINE>', 0x15:'<CROSS>', 0x5e:'<UARROW>',
+            0x18:'<UL-CORNER>', 0x19:'<UR-CORNER>', 0x1a:'<LL-CORNER>',0x1b:'<LR-CORNER>',
+            0x14:'<V-RIGHT>', 0x13:'<V-LEFT>', 0x11:'<H-UP>', 0x12:'<H-DOWN>', 0xdb:'<BLOCK>',
+            0xd3:'<UL-QUAD>', 0xd5:'<UR-QUAD>', 0xd6:'<LL-QUAD>', 0xd4:'<LR-QUAD>', 0xc2:'<UL-LR-QUAD>',
+            0xdd:'<L-HALF>', 0xdc:'<B-HALF>', 0xc6:'<L-NARROW>', 0xc9:'<R-NARROW>', 0xc3:'<U-NARROW>', 0xc0:'<B-NARROW>',
+            0xdf:'<U-HALF>', 0xde:'<R-HALF>',
+            0xcf:'<TRI-LEFT>', 0xd0:'<TRI-RIGHT>', 0xcd:'<TRI-UP>', 0xde:'<TRI-DOWN>'},
+            'Commodore 64':{
+            0x3c:'&lt;', 0x3e:'&gt;',
+            0x1c:'<POUND>', 0x5e:'<PI>', 0x66:'<HASH>', 0x40:'<HLINE>', 0x5d:'<VLINE>', 0x5b:'<CROSS>', 0x5c:'<LEFT-HASH>', 0x7a:'<CHECKMARK>',
+            0x68:'<BOTTOM-HASH>', 0x1f:'<LARROW>', 0x1e:'<UARROW>',
+            0x70:'<UL-CORNER>', 0x6e:'<UR-CORNER>', 0x6d:'<LL-CORNER>', 0x7d:'<LR-CORNER>',
+            0x6b:'<V-RIGHT>', 0x73:'<V-LEFT>', 0x71:'<H-UP>', 0x72:'<H-DOWN>',
+            0x7e:'<UL-QUAD>', 0x7c:'<UR-QUAD>', 0x7b:'<LL-QUAD>', 0x6c:'<LR-QUAD>', 0x7f:'<UL-LR-QUAD>',
+            0x61:'<L-HALF>', 0x62:'<B-HALF>', 0x75:'<L-NARROW>', 0x76:'<R-NARROW>', 0x78:'<U-NARROW>', 0x79:'<B-NARROW>'
+            }}
+# abcd: semigraphic quadrants
+#   -----
+#   |a|b|
+#   |-+-|
+#   |c|d|
+#   -----
+# 9th bit represents inverse video for MSX-Retroterm
+
+SemiChars = {'MSX Screen 2 - RetroTerm':
+                {0b0000:0x020,0b0001:0x0d4,0b0010:0x0d6,0b0011:0x0dc,0b0100:0x0d5,0b0101:0x0de,0b0110:0x0c7,0b0111:0x1d3,
+                 0b1000:0x0d3,0b1001:0x0c1,0b1010:0x0dd,0b1011:0x1d5,0b1100:0x0df,0b1101:0x1d6,0b1110:0x1d4,0b1111:0x0db},
+             'Commodore 64':
+                {0b0000:0x20,0b0001:0x6c,0b0010:0x7b,0b0011:0x62,0b0100:0x7c,0b0101:0xe1,0b0110:0xff,0b0111:0xfe,
+                 0b1000:0x7e,0b1001:0x7f,0b1010:0x61,0b1011:0xfc,0b1100:0xe2,0b1101:0xfb,0b1110:0xec,0b1111:0xa0}}
 
 # filetype = ['MSX sequential','.mseq']
 
@@ -103,17 +144,18 @@ def select_char(sender):
         set_mode('draw_b')
 
 def clear_screen():
-    global matrix, raw_screen, undobuffer, redobuffer, background
+    global matrix, semimatrix, raw_screen, undobuffer, redobuffer, background
 
-    undobuffer.append(matrix)
+    undobuffer.append([matrix,semimatrix])
     redobuffer.clear()
     matrix = np.full((modes[screen_mode]['geo'][0],modes[screen_mode]['geo'][1],3),[modes[screen_mode]['default'][0],background,colors[1]]) #[[0,colors.copy()]]*768
+    semimatrix = np.full((modes[screen_mode]['geo'][0],modes[screen_mode]['geo'][1]),0)
     # background = colors[0]
     raw_screen[:,:] = np.array(palette[background],dtype=np.float32)/255
     # dpg.set_value('color2', palette[colors[0]])
 
 def flood_fill():
-    global matrix, undobuffer, redobuffer
+    global matrix, semimatrix, undobuffer, redobuffer
 
     if mode == 1:
         col = int((dpg.get_mouse_pos()[0]-32)//16)
@@ -131,6 +173,7 @@ def flood_fill():
             col,row = stack.pop(0)
             if np.array_equal(matrix[col,row],test):
                 matrix[col,row,:] = [curchar,colors[0],colors[1]]
+                semimatrix[col,row] = 0
                 if col > 0:
                     stack.append((col-1,row))
                 if col < mc:
@@ -172,7 +215,7 @@ def about_callback():
     dpg.configure_item("aboutw_id", show = False)
 
 def set_color(sender,appdata):
-    global colors, raw_tile, raw_prev, background, matrix, border
+    global colors, raw_tile, raw_prev, background, matrix, border, semi_tex
     if type(sender) == str and sender[0] in ['2','3']:
         if sender[0] == '2':
             background = int(sender[7:])
@@ -198,6 +241,11 @@ def set_color(sender,appdata):
         raw_tile[np.where((chars[curchar]==[1,1,1]).all(axis=2))] = np.array(palette[colors[1]],dtype=np.float32)/255
         tmp_tile = np.asarray(Image.fromarray((raw_tile*255).astype('uint8')).resize([32,32], resample=Image.NEAREST), dtype=np.float32)/255
         raw_prev[:] = tmp_tile[:]
+        for i in range(0,8*8*4,4):
+            semi_tex[i]=palette[colors[1]][0]/255
+            semi_tex[i+1]=palette[colors[1]][1]/255
+            semi_tex[i+2]=palette[colors[1]][2]/255
+        dpg.set_value("semiimg", semi_tex)
         dpg.set_value('color'+str(c), dpg.get_value(sender))
 
 def swap_colors():
@@ -225,16 +273,16 @@ def color_selector(sender):
 
 # Undo/Redo handler
 def undoredo(sender):
-    global change, redobuffer, undobuffer, matrix
+    global change, redobuffer, undobuffer, matrix, semimatrix
 
     if (sender == 'undo') and (len(undobuffer) > 0):
-        redobuffer.append(matrix)
-        matrix = undobuffer.pop()
+        redobuffer.append([matrix, semimatrix])
+        matrix, semimatrix = undobuffer.pop()
         change = False
         sync_matrix()
     elif len(redobuffer) > 0:
-        undobuffer.append(matrix)
-        matrix = redobuffer.pop()
+        undobuffer.append([matrix,semimatrix])
+        matrix,semimatrix = redobuffer.pop()
         change = False
         sync_matrix()
 
@@ -254,7 +302,7 @@ def flip(sender):
         clipboard[0] = np.flipud(clipboard[0])
 
 def set_mode(sender):
-    global mode
+    global mode, semimode
     dmodes = ['draw_b','fill_b','text_b','paint_b','select_b']
     if sender in dmodes:
         mode = dmodes.index(sender)
@@ -264,12 +312,19 @@ def set_mode(sender):
         dpg.configure_item('brush_b', tint_color=(128,128,128))
         dpg.configure_item('flip', show=False)
         dpg.configure_item('text_handler', show=mode==2)
+        dpg.configure_item('semi', show=sender=='draw_b')
         dpg.configure_item('cursor', show=mode==2)
         dpg.configure_item('selection', show=mode==4, pmin=(0,0), pmax=(0,0))
         if mode in [2,4]:
-            dpg.configure_item('charbrush', show=False)
+            if not semimode:
+                dpg.configure_item('charbrush', show=False)
+            else:
+                dpg.configure_item('semibrush', show=False)
         else:
-            dpg.configure_item('charbrush', show=True)
+            if not semimode:
+                dpg.configure_item('charbrush', show=True)
+            else:
+                dpg.configure_item('semibrush', show=True)
         if clipboard[0] is not None:
             dpg.configure_item('clip', show=False)
     elif sender == 'brush_b' and clipboard[0] is not None:
@@ -278,12 +333,24 @@ def set_mode(sender):
             dpg.configure_item(b,tint_color=(128,128,128))
         dpg.configure_item('brush_b', tint_color=(255,255,255))
         dpg.configure_item('flip', show=True)
+        dpg.configure_item('semi', show=False)
         dpg.configure_item('text_handler', show=False)
         dpg.configure_item('cursor', show=False)
         dpg.configure_item('selection', show=False, pmin=(0,0), pmax=(0,0))
         if clipboard[0] is not None:
             dpg.configure_item('clip', show=True)
         clipboard[2] = [-1,-1]
+    elif sender == 'semigfx':   # Toggle Semigraphics mode
+        tint = (255,255,255) if not semimode else (128,128,128)
+        dpg.configure_item(sender,tint_color=tint)
+        semimode = not semimode
+        if not semimode:
+            dpg.configure_item('charbrush', show=True)
+            dpg.configure_item('semibrush', show=False)
+        else:
+            dpg.configure_item('charbrush', show=False)
+            dpg.configure_item('semibrush', show=True)
+
 
 def set_screenmode(sender):
     global screen_mode,colors,background,over_en,raw_over,palette, clipboard
@@ -361,9 +428,13 @@ def fileclick(sender, app_data):
         except:
             prev_tex.fill(0)
 
-def show_save(sender, app_data):
+def show_save(sender, app_data, user_data):
+    if user_data == 's_seq':
+        filetype = modes[screen_mode]['filetypes']
+    else:
+        filetype = ['TML','.tml']
+
     # Save file dialog
-    filetype = modes[screen_mode]['filetypes']
     with dpg.file_dialog(label="Save "+filetype[0]+" file", directory_selector=False, show=True, callback=check_file, min_size=(500,400), user_data=filetype):
         dpg.add_file_extension("", color=(150, 255, 150, 255))
         dpg.add_file_extension(extension=filetype[1], color=(255, 255, 64, 255))
@@ -379,7 +450,7 @@ def show_open(sender, app_data):
 #########################
 
 def drag_handler(sender, app_data):
-    global raw_screen, matrix, tmpmat, change, old_c, old_m, text_c
+    global raw_screen, matrix, semimatrix, tmpmat, tmpsemimat, change, old_c, old_m, text_c
 
 
     maxc = modes[screen_mode]['geo'][0]-1
@@ -394,19 +465,51 @@ def drag_handler(sender, app_data):
     r = 0 if r < 0 else (r if r <= maxr else maxr)
     if dpg.is_item_active('mainimg') and mode == 0: #Draw
         if htype=="mvAppItemType::mvFocusHandler":
-            x = c*16
-            y = r*16
-            cur = [curchar,colors[0],colors[1]]
-            if not np.array_equal(matrix[c,r],cur):
-                if not change:
-                    tmpmat = matrix.copy()  # Make a copy of the matrix before it gets modified
-                raw_screen[y:y+16, x:x+16] = raw_tile
-                matrix[c,r] = cur
-                change = True
-                dpg.configure_item('char_hover',default_value=f'0x{matrix[c,r,0]:02x}')
-                old_m = matrix[c,r]
-                dpg.configure_item('bgcolor', default_value=palette[matrix[c,r,1]])
-                dpg.configure_item('fgcolor', default_value=palette[matrix[c,r,2]])
+            # Normal draw
+            if not semimode:
+                x = c*16
+                y = r*16
+                cur = [curchar,colors[0],colors[1]]
+                if not np.array_equal(matrix[c,r],cur):
+                    if not change:
+                        tmpmat = matrix.copy()  # Make a copy of the matrix before it gets modified
+                        tmpsemimat = semimatrix.copy()
+                    raw_screen[y:y+16, x:x+16] = raw_tile
+                    matrix[c,r] = cur
+                    semimatrix[c,r] = 0
+                    change = True
+                    dpg.configure_item('char_hover',default_value=f'0x{matrix[c,r,0]:02x}')
+                    old_m = matrix[c,r]
+                    dpg.configure_item('bgcolor', default_value=palette[matrix[c,r,1]])
+                    dpg.configure_item('fgcolor', default_value=palette[matrix[c,r,2]])
+            # Semigraphics draw
+            else:
+                x = c*16
+                y = r*16
+                x1 = int((dpg.get_mouse_pos()[0]-32)//8)*8
+                y1 = int((dpg.get_mouse_pos()[1]-32)//8)*8
+                quadrant = 2**(3-((((y1//8)%2)*2)|((x1//8)%2)))
+                sch = SemiChars[screen_mode][semimatrix[c,r]|quadrant]
+                if sch != matrix[c,r,0]:
+                    if not change:
+                        tmpmat = matrix.copy()  # Make a copy of the matrix before it gets modified
+                        tmpsemimat = semimatrix.copy()
+                    semimatrix[c,r] |= quadrant
+                    if sch >= 0x100:
+                        sch &= 0xff
+                        c0 = colors[1]
+                        c1 = colors[0]
+                    else:
+                        c0 = colors[0]
+                        c1 = colors[1]
+                    cur = [sch,c0,c1]
+                    matrix[c,r] = cur
+                    chars = chars_msx if screen_mode == 'MSX Screen 2 - RetroTerm' else chars_cbmu if charset == 'Upper/GFX' else chars_cbml
+                    tmp_tile = np.zeros((16,16,3),np.float32)
+                    tmp_tile[np.where((chars[sch]==[0,0,0]).all(axis=2))] = np.array(palette[c0],dtype=np.float32)/255
+                    tmp_tile[np.where((chars[sch]==[1,1,1]).all(axis=2))] = np.array(palette[c1],dtype=np.float32)/255
+                    raw_screen[y:y+16, x:x+16] = tmp_tile
+                    change = True
     elif dpg.is_item_active('mainimg') and mode == 2:   #Text
         if htype=="mvAppItemType::mvFocusHandler":
             text_c = [c,r]
@@ -419,6 +522,7 @@ def drag_handler(sender, app_data):
             if not np.array_equal(matrix[c,r],cur):
                 if not change:
                     tmpmat = matrix.copy()  # Make a copy of the matrix before it gets modified
+                    tmpsemimat = semimatrix.copy()
                 chars = chars_msx if screen_mode == 'MSX Screen 2 - RetroTerm' else chars_cbmu if charset == 'Upper/GFX' else chars_cbml
                 tchar = np.zeros((16,16,3),np.float32)
                 tchar[np.where((chars[cur[0]]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
@@ -442,6 +546,7 @@ def drag_handler(sender, app_data):
         if htype=="mvAppItemType::mvFocusHandler" and (clipboard[2][0] != c or clipboard[2][1] != r):
             if not change:
                 tmpmat = matrix.copy()  # Make a copy of the matrix before it gets modified
+                tmpsemimat = semimatrix.copy()
                 change = True
             x = c*16
             y = r*16
@@ -485,7 +590,7 @@ def drag_handler(sender, app_data):
             old_m = matrix[c,r]
         x = c*16
         y = r*16
-        if mode == 5:
+        if mode == 5:   #Brush
             # x = c*16
             # y = r*16
             cw = clipboard[1].shape[1]
@@ -494,14 +599,19 @@ def drag_handler(sender, app_data):
             y1 = y-((ch//32)*16)
             dpg.configure_item('clip',pmin=(x1,y1), pmax=(x1+cw,y1+ch))
         else:
-            x1 = x
-            y1 = y
-            dpg.configure_item('charbrush',pmin=(x1,y1), pmax=(x1+16,y1+16))
+            if not semimode:
+                x1 = x
+                y1 = y
+                dpg.configure_item('charbrush',pmin=(x1,y1), pmax=(x1+16,y1+16))
+            else:
+                x1 = int((dpg.get_mouse_pos()[0]-32)//8)*8
+                y1 = int((dpg.get_mouse_pos()[1]-32)//8)*8
+                dpg.configure_item('semibrush',pmin=(x1,y1), pmax=(x1+8,y1+8))
 
 def release_handler():
     global change, undobuffer, redobuffer, clipboard
     if change:
-        undobuffer.append(tmpmat)
+        undobuffer.append([tmpmat,tmpsemimat])
         redobuffer.clear()
         change = False
     if mode == 4:
@@ -548,7 +658,7 @@ def short_handler(sender, data):
 
 # Text mode keyboard shortcuts handler:
 def text_mode(sender, data):
-    global text_c, raw_screen, undobuffer, redobuffer,mode
+    global text_c, raw_screen, undobuffer, redobuffer,mode, charset
 
     chars = chars_msx if screen_mode == 'MSX Screen 2 - RetroTerm' else chars_cbmu if charset == 'Upper/GFX' else chars_cbml
     if not dpg.is_key_down(dpg.mvKey_Control) and not dpg.is_key_down(dpg.mvKey_Alt):
@@ -563,10 +673,14 @@ def text_mode(sender, data):
                 data -= 0x10
             if screen_mode == 'Commodore 64':   #Simple Ascii to Screencodes
                 if data in range(0x41,0x60):
-                    data -= 0x40
+                    if charset == 'Upper/GFX':
+                        data -= 0x40
                 elif data in range(0x61,0x7b):
-                    data -= 0x20
-            undobuffer.append(matrix.copy())
+                    if charset == 'Upper/GFX':
+                        data -= 0x20
+                    else:
+                        data -= 0x60 
+            undobuffer.append([matrix.copy(),semimatrix.copy()])
             redobuffer.clear()
             cur = [data,colors[0],colors[1]]
             matrix[text_c[0],text_c[1]] = cur
@@ -589,7 +703,7 @@ def text_mode(sender, data):
             dpg.configure_item('text_b', tint_color=(128,128,128))
             dpg.configure_item('cursor', show=False)
         elif data == 259:       # Backspace
-            undobuffer.append(matrix.copy())
+            undobuffer.append([matrix.copy(),semimatrix.copy()])
             redobuffer.clear()
             if text_c[0] == 0:
                 if text_c[1] > 0:
@@ -630,7 +744,7 @@ def text_mode(sender, data):
 #########################
 def get_textures():
     global chars_msx, chars_cbmu, chars_cbml
-    global raw_tex, pimg, iimg, raw_screen, raw_tile, raw_icons, raw_icons16, raw_prev, dummy_tex
+    global raw_tex, pimg, iimg, raw_screen, raw_tile, raw_icons, raw_icons16, raw_prev, dummy_tex, semi_tex
     pimg = Image.open('assets/splash.gif').convert('RGB')
     cimg = Image.open('assets/charset-msx.png').convert('RGB')
     iimg = Image.open('assets/icons.png').convert('RGB')
@@ -670,8 +784,14 @@ def get_textures():
 
     for j in range(0, icons.shape[1],32):
         raw_icons.append(np.ascontiguousarray(icons[0:32, j:j+32]))
-    for j in range(0, 4):
+    for j in range(0, 5):
         raw_icons16.append(np.ascontiguousarray(icons[32:48, j*16:(j*16)+16]))
+
+    for i in range(0, 8*8):
+        semi_tex.append(1.0)
+        semi_tex.append(1.0)
+        semi_tex.append(1.0)
+        semi_tex.append(1.0)
 
     with dpg.texture_registry():
         dpg.add_static_texture(width=1, height=1, default_value= dummy_tex, tag='dummy')
@@ -691,6 +811,7 @@ def get_textures():
         for i,t in enumerate(raw_icons16):
             dpg.add_raw_texture(width=16, height=16, default_value=t, format=dpg.mvFormat_Float_rgb, tag='si'+str(i))
         dpg.add_raw_texture(width=640, height=400, default_value=raw_over, format=dpg.mvFormat_Float_rgba, tag='oimg')
+        dpg.add_dynamic_texture(width=8, height=8, default_value=semi_tex, tag='semiimg')
 
 # Check if file exist and prompt for overwrite if so
 def check_file(sender,app_data, user_data):
@@ -752,7 +873,14 @@ def sync_matrix():
 def save_file(sender, app_data, user_data):
     dpg.configure_item("ow_id", show=False)
     dpg.configure_item('save',show=True,callback=lambda: save_file(sender,app_data,user_data))
-    save_seq(user_data[0])
+    # print(user_data)
+    if len(user_data)>1:
+        if user_data[1][0] == 'TML':
+            save_tml(user_data[0])
+        else:
+            save_seq(user_data[0])
+    else:
+        save_seq(user_data[0])
 
 def new_work():
     clear_screen()
@@ -1048,10 +1176,198 @@ def save_seq(filename):
         if buffer != b'' and r < mr-1:
             output.append(b'\x0d')
             rvs = False
+    data = b''
+    while len(output)>0:
+        data += output.popleft()
+    olines = data.split(b'\x0d')   # Split resulting file in individual lines
+    reml = 0
+    for line in olines[::-1]:   #iterate backwards
+        if len(line) > 0:
+            break
+        olines = olines [:-1]   #remove trailing empty lines
+        reml += 1
+    if reml > 0:
+        olines.append(b'')
+    data = b'\x0d'.join(olines)
     with open(filename,'wb') as file:
-        while len(output)>0:
-            file.write(output.popleft())
+        file.write(data)
+        # while len(output)>0:
+        #     file.write(output.popleft())
                     
+
+def save_tml(filename):
+
+    def scr2tml(c):
+        nonlocal rvs
+        tml = ''
+        if c < 128:
+            if rvs:
+                rvs = False
+                tml += '<RVSOFF>'  #RVS off
+        else:
+            if not rvs:
+                rvs = True
+                tml += '<RVSON>'  #RVS on
+        c &= 0x7f
+        if c == 0:
+            tml += '@'
+        if c in range(1,32):
+            tml += TMLchars[screen_mode].get(c,chr(c+96))   # -> 97-127
+        elif c in range(32,64):
+            tml += TMLchars[screen_mode].get(c,chr(c))      # -> 32-63
+        elif c == 64:
+            tml += '<HLINE>'
+        elif c in range(65,91):
+            tml += TMLchars[screen_mode].get(c,chr(c))   # -> 65-90
+        elif c in range(91,96):
+            tml += TMLchars[screen_mode].get(c,f'<CHR c={c+32}>')   # -> 123-127
+        elif c in range(96,128):
+            tml += TMLchars[screen_mode].get(c,f'<CHR c={c+64}>')   # -> 160-191
+        return tml
+
+
+
+    output = deque()
+
+    if screen_mode == 'Commodore 64':
+        tml = f'<TEXT border={border} background={background}><CLR>{"<UPPER>" if charset == "Upper/GFX" else "<LOWER>"}'  # Set Text mode, black border, background color, clear screen, set charset
+        current = [modes[screen_mode]['default'][0],background,-1]
+        empty = [modes[screen_mode]['default'][0],background]
+    else:
+        bg = background+1
+        bo = border+1
+        co = int(matrix[0,0][2]+1)
+        tml = f'<TEXT border={bo} background={bg}><INK c={co}><CLR>'  # Set paper color, clear screen
+        current = [modes[screen_mode]['default'][0],bg,-1]
+        empty = [modes[screen_mode]['default'][0],bg]
+    default = modes[screen_mode]['default'][0]
+    rvs = False
+    output.append(tml)
+    tml = ''
+    mc = modes[screen_mode]['geo'][0]
+    mr = modes[screen_mode]['geo'][1]
+    for r in range(mr):
+        buffer = ''        # buffer of empty spaces
+        for col in range(mc):
+            tml = ''
+            cell = matrix[col,r].copy()
+            if screen_mode != 'Commodore 64':
+                cell[1:] += 1
+            if not np.array_equal(cell,current):
+                #bin += buffer
+                if buffer != '':
+                    output.append(buffer)
+                    buffer = ''
+                c,b,f = cell    # character, bg, fg
+                # if np.array_equal(np.flip(cell[1:],0),current[1:]): # Inverse
+                #     bin += b'\x1a' if rvs else b'\x19'
+                #     rvs = not rvs
+                # else:
+                if screen_mode != 'Commodore 64':
+                    if f != current[2]:     #FG color
+                        tml +=f'{"<PAPER c="+str(f)+">" if rvs else TMLColors[screen_mode][f]}'
+                    if b != current[1]:     #BG color
+                        tml +=f'{"<PAPER c="+str(b)+">" if not rvs else TMLColors[screen_mode][b]}'
+                    if not np.array_equal(cell[:2],empty):
+                        if c < 0x20:
+                            tml += TMLchars[screen_mode].get(c,f'<CHR c=1><CHR c={c+0x40}>')
+                        elif c in (254,255):
+                            tml += f'<CHR c=1><CHR c={c-0x9e}>'
+                        else:
+                            if c > 0x7f:
+                                tml += TMLchars[screen_mode].get(c,f'<CHR c={c}>')
+                            else:
+                                tml += chr(c)
+                    else:
+                        buffer += ' '
+                else:
+                    if f != current[2]:     #FG color
+                        tml += TMLColors[screen_mode][f]
+                    if c != default or rvs:
+                        tml += scr2tml(c)   #<<<<
+                    else:
+                        buffer += scr2tml(c)
+                output.append(tml)
+                current = [c,b,f]
+                # if col == mc-1 and r == mr-1 and buffer == b'':   # Character on the last screen cell?
+                #     output.pop()    # Discard last cell
+                #     penult = output.pop()
+                #     if len(penult) > 1 and len(set(penult)) == 1 and penult[0] != 1:
+                #         output.append(penult[:-1])  #2nd to last element were empty n-spaces, reinsert n-spaces-1
+                #     c,b,f = matrix[col,r]   # Last character
+                #     if screen_mode == 'Commodore 64':
+                #         rvs = c < 128
+                #         tml = TMLColors[screen_mode][f]+scr2tml(c)  #<<<<<
+                #     else:
+                #         tml = f'<PAPER c={b}>{TMLColors[screen_mode][f]}'
+                #         if c < 0x20:
+                #             tml += TMLchars[screen_mode].get(c,f'\x01<CHR c={c+0x40}>')
+                #         elif c in (254,255):
+                #             tml += f'\x01<CHR c={c-0x9e}>'
+                #         else:
+                #             if c > 0x7f:
+                #                 tml += TMLchars[screen_mode].get(c,f'<CHR c={c}>')
+                #             else:
+                #                 tml += chr(c)
+                #     tml += '<CRSRL><INSERT>'
+                #     # if screen_mode == 'Commodore 64':   # left crsr + insert
+                #     #     bin += b'\x9d\x94'
+                #     # else:
+                #     #     bin += b'\x1d\x12'
+                #     c,b,f = matrix[mc-2,mr-1]   # 2nd to last character
+                #     if screen_mode == 'Commodore 64':
+                #         rvs = c < 128
+                #         tml += TMLColors[screen_mode][f]+scr2tml(c) #<<<<<<
+                #     else:
+                #         tml = f'<PAPER c={b}>{TMLColors[screen_mode][f]}'
+                #         if c < 0x20:
+                #             tml += TMLchars[screen_mode].get(c,f'\x01<CHR c={c+0x40}>')
+                #         elif c in (254,255):
+                #             tml += f'\x01<CHR c={c-0x9e}>'
+                #         else:
+                #             if c > 0x7f:
+                #                 tml += TMLchars[screen_mode].get(c,f'<CHR c={c}>')
+                #             else:
+                #                 tml += chr(c)
+                #     output.append(tml)
+            elif np.array_equal(cell[:2],empty):
+                buffer += ' '
+                rvs = False
+            else:
+                output.append(buffer)
+                if screen_mode != 'Commodore 64':
+                    if cell[0] < 0x20:
+                        output.append(TMLchars[screen_mode].get(cell[0],f'<CHR c=1><CHR c={c+0x40}>'))
+                    elif cell[0] in (254,255):
+                        output.append(f'<CHR c=1><CHR c={cell[0]-0x9e}>')
+                    else:
+                        if c > 0x7f:
+                            output.append(TMLchars[screen_mode].get(c,f'<CHR c={c}>'))
+                        else:
+                            output.append(chr(cell[0]))
+                else:
+                    output.append(scr2tml(c))   #<<<<<<
+                buffer = ''
+        if buffer != '' and r < mr-1:
+            output.append('<BR>')
+            rvs = False
+        if r != mr-1:
+            output.append('\n')
+    data = ''
+    while len(output)>0:
+        data += output.popleft()
+    olines = data.split('<BR>')   # Split resulting file in individual lines
+    reml = 0
+    for line in olines[::-1]:   #iterate backwards
+        if line != '\n':
+            break
+        olines = olines [:-1]   #remove trailing empty lines
+        reml += 1
+    if reml > 0:
+        olines.append('')
+    data = '<BR>'.join(olines)
+    with open(filename,'w') as file:
+        file.write(data)
 
 ###########################################################3
 # GUI elements only after this call
@@ -1074,7 +1390,7 @@ with dpg.window(label="About", modal=True, show=False, id="aboutw_id", no_title_
     dpg.add_image_button(texture_tag="splash_id", frame_padding=0, callback=about_callback)
     dpg.add_text('Code: Pablo Roldán (Durandal)')
     dpg.add_text('Retroterm MSX Font: Jorge Castillo (Pastbytes)')
-    dpg.add_text('©2024 Retrocomputacion')
+    dpg.add_text('©2024-2025 Retrocomputacion')
 
 # Open file dialog
 with dpg.file_dialog(label="Open overlay", directory_selector=False, show=False, callback=open_overlay, tag="open_dialog", min_size=(700,400)):
@@ -1107,6 +1423,7 @@ with dpg.window(tag="MainW", no_scrollbar= True):
             dpg.add_menu_item(label='Open', callback=show_open)
             dpg.add_menu_item(label="Save", tag='save', show=False)
             dpg.add_menu_item(label="Save As...", callback=show_save, user_data='s_seq')
+            dpg.add_menu_item(label="Export as TML", callback=show_save, user_data='s_tml')
             dpg.add_separator()
             dpg.add_menu_item(label='Open overlay...', callback=show_dialog)
             dpg.add_menu_item(label="Quit", callback= lambda: dpg.configure_item("quit_id", show = True))
@@ -1132,6 +1449,7 @@ with dpg.window(tag="MainW", no_scrollbar= True):
                 dpg.draw_image('screen', (0,0), (640,400), uv_min=(0,0), uv_max=(1,1))
                 dpg.draw_image('prevtile',(0,0),(16,16), uv_min=(0,0), uv_max=(1,1), tag='charbrush')
                 dpg.draw_image('oimg', (0,0), (640,400), uv_min=(0,0), uv_max=(1,1), tag='overlay', show=False)
+                dpg.draw_image('semiimg', (0,0), (8,8), uv_min=(0,0), uv_max=(1,1), tag='semibrush', show=False)
                 with dpg.draw_layer(label='grid', tag='grid'):
                     for x in range(0,640,16):
                         dpg.draw_line((x,0),(x,400), color=(128,128,128,64), thickness=1)
@@ -1175,6 +1493,11 @@ with dpg.window(tag="MainW", no_scrollbar= True):
                     dpg.add_image_button(texture_tag=tb[0], width=32, height=32, callback=tb[1], tag=tb[2], tint_color=tb[3])
                     with dpg.tooltip(tb[2],delay=0.25):
                         dpg.add_text(tb[4])
+            with dpg.group(horizontal=True, horizontal_spacing=0, indent=210, show=True, tag='semi'):
+                dpg.add_image_button(texture_tag='si3', width=16, height=16, tag='semigfx', callback=set_mode, frame_padding=2, show=True, tint_color=(128,128,128))
+                with dpg.tooltip('semigfx',delay=0.25):
+                    dpg.add_text('semi-graphics')
+
             with dpg.group(horizontal=True, horizontal_spacing=0, indent=360, show=False, tag='flip'):
                 dpg.add_image_button(texture_tag='si1', width=16, height=16, tag='flip_x', callback=flip, frame_padding=2, show=True)
                 dpg.add_image_button(texture_tag='si2', width=16, height=16, tag='flip_y', callback=flip, frame_padding=2, show=True)
