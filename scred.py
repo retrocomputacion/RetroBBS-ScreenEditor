@@ -72,7 +72,7 @@ TMLchars = {'MSX Screen 2 - RetroTerm':{
             0xd3:'<UL-QUAD>', 0xd5:'<UR-QUAD>', 0xd6:'<LL-QUAD>', 0xd4:'<LR-QUAD>', 0xc2:'<UL-LR-QUAD>',
             0xdd:'<L-HALF>', 0xdc:'<B-HALF>', 0xc6:'<L-NARROW>', 0xc9:'<R-NARROW>', 0xc3:'<U-NARROW>', 0xc0:'<B-NARROW>',
             0xdf:'<U-HALF>', 0xde:'<R-HALF>',
-            0xcf:'<TRI-LEFT>', 0xd0:'<TRI-RIGHT>', 0xcd:'<TRI-UP>', 0xde:'<TRI-DOWN>'},
+            0xcf:'<TRI-LEFT>', 0xd0:'<TRI-RIGHT>', 0xcd:'<TRI-UP>', 0xce:'<TRI-DOWN>'},
             'Commodore 64':{
             0x3c:'&lt;', 0x3e:'&gt;',
             0x1c:'<POUND>', 0x5e:'<PI>', 0x66:'<HASH>', 0x40:'<HLINE>', 0x5d:'<VLINE>', 0x5b:'<CROSS>', 0x5c:'<LEFT-HASH>', 0x7a:'<CHECKMARK>',
