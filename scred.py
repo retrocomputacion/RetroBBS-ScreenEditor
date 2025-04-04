@@ -7,6 +7,8 @@ from os.path import exists as file_exists
 chars_msx = None    # Charset texture array
 chars_cbmu = None
 chars_cbml = None
+chars_vtx = None
+chars_vip = None
 raw_tex = None  # About splash texture
 dummy_tex = None
 pimg = None     # About splash image
@@ -17,6 +19,7 @@ raw_screen = np.asarray(screen, dtype=np.float32)/255       # Main screen textur
 raw_over = np.full((400,640,4),[0,0,0,0], dtype=np.float32)   # Overlay texture
 sdraw = ImageDraw.Draw(screen)
 prev_tex = np.zeros((240,200,3), dtype=np.float32)  # Open file dialog preview texture
+raw_def = None # Default tile texture
 raw_tile = None # Current tile texture
 raw_prev = None # Current tile preview texture
 raw_icons = []  # Icon textures
@@ -47,7 +50,10 @@ modes = {'MSX Screen 2 - RetroTerm':{'geo':(32,24),'palette':[[0x00,0x00,0x00],[
          'filetypes':['MSX sequential','.mseq']},
          'Commodore 64':{'geo':(40,25),'palette':[[0x00,0x00,0x00],[0xff,0xff,0xff],[0x7C,0x35,0x2B],[0x5A,0xA6,0xB1],[0x69,0x41,0x85],[0x5D,0x86,0x43],[0x21,0x2E,0x78],[0xCF,0xBE,0x6F],
          [0x89,0x4A,0x26],[0x5B,0x33,0x00],[0xAF,0x64,0x59],[0x43,0x43,0x43],[0x6b,0x6b,0x6b],[0xA0,0xCB,0x84],[0x56,0x65,0xB3],[0x95,0x95,0x95]],'default':[32,0,1],
-         'filetypes':['Sequential','.seq']}
+         'filetypes':['Sequential','.seq']},
+         'VidTex':{'geo':(40,25),'palette':[[0x5D,0x86,0x43],[0xCF,0xBE,0x6F],[0x21,0x2E,0x78],[0x7C,0x35,0x2B],[0xff,0xff,0xff],[0x5A,0xA6,0xB1],[0x69,0x41,0x85],[0x89,0x4A,0x26],
+         [0x00,0x00,0x00]],'default':[32,8,0],
+         'filetypes':['Text file','.txt']}
          }
 
 petcolors = [b'\x90',b'\x05',b'\x1c',b'\x9f',b'\x9c',b'\x1e',b'\x1f',b'\x9e',b'\x81',b'\x95',b'\x96',b'\x97',b'\x98',b'\x99',b'\x9a',b'\x9b']
@@ -55,7 +61,8 @@ petcolors = [b'\x90',b'\x05',b'\x1c',b'\x9f',b'\x9c',b'\x1e',b'\x1f',b'\x9e',b'\
 TMLColors = {'MSX Screen 2 - RetroTerm':['','<BLACK>','<GREEN>','<LTGREEN>','<BLUE>','<LTBLUE>','<DRED>','<CYAN>','<RED>',
                                          '<PINK>','<YELLOW>','<LTYELLOW>','<DGREEN>','<PURPLE>','<GREY>','<WHITE>'],
              'Commodore 64':['<BLACK>','<WHITE>','<RED>','<CYAN>','<PURPLE>','<GREEN>','<BLUE>','<YELLOW>',
-                             '<ORANGE>','<BROWN>','<PINK>','<GREY1>','<GREY2>','<LTGREEN>','<LTBLUE>','<GREY3>']}
+                             '<ORANGE>','<BROWN>','<PINK>','<GREY1>','<GREY2>','<LTGREEN>','<LTBLUE>','<GREY3>'],
+             'VidTex':['<GREEN>','<YELLOW>','<BLUE>','<RED>','<WHITE>','<CYAN>','<PURPLE>','<ORANGE>','<BLACK>']}
 
 TMLchars = {'MSX Screen 2 - RetroTerm':{
             0x3c:'&lt;', 0x3e:'&gt;',
@@ -74,6 +81,11 @@ TMLchars = {'MSX Screen 2 - RetroTerm':{
             0x6b:'<V-RIGHT>', 0x73:'<V-LEFT>', 0x71:'<H-UP>', 0x72:'<H-DOWN>',
             0x7e:'<UL-QUAD>', 0x7c:'<UR-QUAD>', 0x7b:'<LL-QUAD>', 0x6c:'<LR-QUAD>', 0x7f:'<UL-LR-QUAD>',
             0x61:'<L-HALF>', 0x62:'<B-HALF>', 0x75:'<L-NARROW>', 0x76:'<R-NARROW>', 0x78:'<U-NARROW>', 0x79:'<B-NARROW>'
+            },
+            'VidTex':{
+            0x3c:'&lt;', 0x3e:'&gt;',
+            0x80:' ', 0x81:'<LR-QUAD>', 0x82:'<LL-QUAD>', 0x83:'<B-HALF>', 0x84:'<UR-QUAD>', 0x85:'<R-HALF>', 0x86:'<UR-LL-QUAD>', 0x87:'<LL-LR-UR-QUAD>',
+            0x88:'<UL-QUAD>', 0x89:'<UL-LR-QUAD>', 0x8a:'<L-HALF>', 0x8b:'<UL-LL-LR-QUAD>', 0x8c:'<U-HALF>', 0x8d:'<UL-UR-LR-QUAD>', 0x8e:'<UL-UR-LL-QUAD>', 0x8f:'<BLOCK>'
             }}
 # abcd: semigraphic quadrants
 #   -----
@@ -88,7 +100,11 @@ SemiChars = {'MSX Screen 2 - RetroTerm':
                  0b1000:0x0d3,0b1001:0x0c1,0b1010:0x0dd,0b1011:0x1d5,0b1100:0x0df,0b1101:0x1d6,0b1110:0x1d4,0b1111:0x0db},
              'Commodore 64':
                 {0b0000:0x20,0b0001:0x6c,0b0010:0x7b,0b0011:0x62,0b0100:0x7c,0b0101:0xe1,0b0110:0xff,0b0111:0xfe,
-                 0b1000:0x7e,0b1001:0x7f,0b1010:0x61,0b1011:0xfc,0b1100:0xe2,0b1101:0xfb,0b1110:0xec,0b1111:0xa0}}
+                 0b1000:0x7e,0b1001:0x7f,0b1010:0x61,0b1011:0xfc,0b1100:0xe2,0b1101:0xfb,0b1110:0xec,0b1111:0xa0},
+             'VidTex':
+                {0b0000:0x60,0b0001:0x61,0b0010:0x62,0b0011:0x63,0b0100:0x64,0b0101:0x65,0b0110:0x66,0b0111:0x67,
+                 0b1000:0x68,0b1001:0x69,0b1010:0x6a,0b1011:0x6b,0b1100:0x6c,0b1101:0x6d,0b1110:0x6e,0b1111:0x6f},
+}
 
 # filetype = ['MSX sequential','.mseq']
 
@@ -130,13 +146,20 @@ def draw_tile():
 
 def select_char(sender):
     global curchar, raw_tile, raw_prev
-    chars = chars_msx if screen_mode == 'MSX Screen 2 - RetroTerm' else chars_cbmu if charset == 'Upper/GFX' else chars_cbml
+    if screen_mode == 'MSX Screen 2 - RetroTerm':
+        chars = chars_msx
+    elif screen_mode == 'Commodore 64':
+        chars = chars_cbmu if charset == 'Upper/GFX' else chars_cbml
+    else:
+        chars = chars_vtx if charset == 'VidTex 64' else chars_vip
     pre = sender[0] #'b' if screen_mode == 'MSX Screen 2 - RetroTerm' else 'd'
     dpg.configure_item(pre+str(curchar),tint_color=(128,128,128))
     curchar = int(sender[1:])
+    ix = curchar if screen_mode != 'VidTex' else curchar-32
     dpg.configure_item('prevcode',default_value=f'0x{curchar:02x}')
-    raw_tile[np.where((chars[curchar]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
-    raw_tile[np.where((chars[curchar]==[1,1,1]).all(axis=2))] = np.array(palette[colors[1]],dtype=np.float32)/255
+    fg = palette[colors[1]] if charset != 'VidTex 64' else palette[colors[1]] if colors[1] < 8 else palette[7]
+    raw_tile[np.where((chars[ix]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
+    raw_tile[np.where((chars[ix]==[1,1,1]).all(axis=2))] = np.array(fg,dtype=np.float32)/255
     tmp_tile = np.asarray(Image.fromarray((raw_tile*255).astype('uint8')).resize([32,32], resample=Image.NEAREST), dtype=np.float32)/255
     raw_prev[:] = tmp_tile[:]
     dpg.configure_item(sender,tint_color=(255,255,128))
@@ -167,7 +190,7 @@ def flood_fill():
 
         mc = modes[screen_mode]['geo'][0]-1
         mr = modes[screen_mode]['geo'][1]-1
-        undobuffer.append(matrix.copy())
+        undobuffer.append([matrix.copy(),semimatrix])
         redobuffer.clear()
         while stack:
             col,row = stack.pop(0)
@@ -215,30 +238,47 @@ def about_callback():
     dpg.configure_item("aboutw_id", show = False)
 
 def set_color(sender,appdata):
-    global colors, raw_tile, raw_prev, background, matrix, border, semi_tex
+    global colors, raw_def, raw_tile, raw_prev, background, matrix, border, semi_tex
     if type(sender) == str and sender[0] in ['2','3']:
         if sender[0] == '2':
             background = int(sender[7:])
+            if screen_mode == 'Commodore 64':
+                colors[0] = background
+                pre = 'd' if charset == 'Upper/GFX' else 'e'
+                select_char(pre+str(curchar))
+                matrix[...,1] = background
+                sync_matrix()
+            elif screen_mode == 'VidTex':
+                colors[0] = background
+                pre = 'f' if charset == 'VidTex 64' else 'g'
+                select_char(pre+str(curchar))
+                matrix[...,1] = background
+                sync_matrix()
         else:
             border = int(sender[7:])
-        if screen_mode == 'Commodore 64' and sender[0] == '2':
-            colors[0] = background
-            pre = 'd' if charset == 'Upper/GFX' else 'e'
-            select_char(pre+str(curchar))
-            matrix[...,1] = background
-            sync_matrix()
+            
         dpg.set_value('color'+sender[0], dpg.get_value(sender))
         dpg.configure_item('cselect_id', show=False)
         dpg.delete_item('cselect_id')
     else:
-        chars = chars_msx if screen_mode == 'MSX Screen 2 - RetroTerm' else chars_cbmu if charset == 'Upper/GFX' else chars_cbml
+        if screen_mode == 'MSX Screen 2 - RetroTerm':
+            chars = chars_msx
+        elif screen_mode == 'Commodore 64':
+            chars = chars_cbmu if charset == 'Upper/GFX' else chars_cbml
+        else:
+            chars = chars_vtx if charset == 'VidTex 64' else chars_vip
         sender = dpg.get_item_alias(appdata[1])
         c = int(not appdata[0])
         if c == 0 and screen_mode == 'Commodore 64':
             return
         colors[c] = int(sender[6:])
-        raw_tile[np.where((chars[curchar]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
-        raw_tile[np.where((chars[curchar]==[1,1,1]).all(axis=2))] = np.array(palette[colors[1]],dtype=np.float32)/255
+        ix = curchar if screen_mode != 'VidTex' else curchar-32
+        fg = palette[colors[1]] if charset != 'VidTex 64' else palette[colors[1]] if colors[1] < 8 else palette[7]
+        raw_tile[np.where((chars[ix]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
+        raw_tile[np.where((chars[ix]==[1,1,1]).all(axis=2))] = np.array(fg,dtype=np.float32)/255
+        ix = modes[screen_mode]['default'][0] if screen_mode != 'VidTex' else modes[screen_mode]['default'][0]-32
+        raw_def[np.where((chars[ix]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
+        raw_def[np.where((chars[ix]==[1,1,1]).all(axis=2))] = np.array(fg,dtype=np.float32)/255
         tmp_tile = np.asarray(Image.fromarray((raw_tile*255).astype('uint8')).resize([32,32], resample=Image.NEAREST), dtype=np.float32)/255
         raw_prev[:] = tmp_tile[:]
         for i in range(0,8*8*4,4):
@@ -249,7 +289,7 @@ def set_color(sender,appdata):
         dpg.set_value('color'+str(c), dpg.get_value(sender))
 
 def swap_colors():
-    global colors, raw_tile, raw_prev
+    global colors, raw_def, raw_tile, raw_prev
 
     chars = chars_msx if screen_mode == 'MSX Screen 2 - RetroTerm' else chars_cbmu if charset == 'Upper/GFX' else chars_cbml
     colors = colors[::-1]   #[colors[1],colors[0]]
@@ -257,6 +297,9 @@ def swap_colors():
     dpg.set_value('color1', palette[colors[1]])
     raw_tile[np.where((chars[curchar]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
     raw_tile[np.where((chars[curchar]==[1,1,1]).all(axis=2))] = np.array(palette[colors[1]],dtype=np.float32)/255
+    ix = modes[screen_mode]['default'][0]
+    raw_def[np.where((chars[ix]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
+    raw_def[np.where((chars[ix]==[1,1,1]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
     tmp_tile = np.asarray(Image.fromarray((raw_tile*255).astype('uint8')).resize([32,32], resample=Image.NEAREST), dtype=np.float32)/255
     raw_prev[:] = tmp_tile[:]
 
@@ -302,7 +345,7 @@ def flip(sender):
         clipboard[0] = np.flipud(clipboard[0])
 
 def set_mode(sender):
-    global mode, semimode
+    global mode, semimode, colors
     dmodes = ['draw_b','fill_b','text_b','paint_b','select_b']
     if sender in dmodes:
         mode = dmodes.index(sender)
@@ -347,16 +390,28 @@ def set_mode(sender):
         if not semimode:
             dpg.configure_item('charbrush', show=True)
             dpg.configure_item('semibrush', show=False)
+            if screen_mode == 'VidTex':
+                dpg.configure_item('vcolor8', show = True)
         else:
             dpg.configure_item('charbrush', show=False)
             dpg.configure_item('semibrush', show=True)
+            if screen_mode == 'VidTex':
+                dpg.configure_item('vcolor8', show = False)
+                if colors[1] == 8:
+                    set_color(0,(0,dpg.get_alias_id('vcolor7')))
 
 
 def set_screenmode(sender):
-    global screen_mode,colors,background,over_en,raw_over,palette, clipboard
+    global screen_mode,colors,background,over_en,raw_over,palette, clipboard, charset, semi_tex, curchar
     smode = dpg.get_value('s_mode')
     if smode != screen_mode:
-        pre = 'b' if screen_mode == 'MSX Screen 2 - RetroTerm' else 'd' if charset == 'Upper/GFX' else 'e'
+        if screen_mode == 'MSX Screen 2 - RetroTerm':
+            pre = 'b'
+        elif screen_mode == 'Commodore 64':
+            pre = 'd' if charset == 'Upper/GFX' else 'e'
+        else:
+            pre = 'f' if charset == 'VidTex 64' else 'g'
+        # pre = 'b' if screen_mode == 'MSX Screen 2 - RetroTerm' else 'd' if charset == 'Upper/GFX' else 'e'
         dpg.configure_item(pre+str(curchar),tint_color=(128,128,128))   # Reset char selection for previous mode
         screen_mode = smode
         palette = modes[screen_mode]['palette']
@@ -364,20 +419,49 @@ def set_screenmode(sender):
         dpg.set_item_height('mainimg',modes[screen_mode]['geo'][1]*16)
         if screen_mode == "Commodore 64":
             dpg.configure_item('cbmu_chars', show=True)
+            dpg.configure_item('vtx_chars', show=False)
+            dpg.configure_item('vip_chars', show=False)
             dpg.configure_item('msx_chars', show=False)
             dpg.configure_item('swap', show=False)
             dpg.configure_item('color0', show=False)
             dpg.configure_item('charset', show=True)
+            dpg.configure_item('charset2', show=False)
             dpg.configure_item('c64colors', show=True)
             dpg.configure_item('msxcolors', show=False)
+            dpg.configure_item('vidtexcolors', show=False)
+            dpg.configure_item('charset',default_value='Upper/GFX')
+            charset = 'Upper/GFX'
+            # set_charset('', 'Upper/GFX')
+            pre =  'd'
+        elif screen_mode =='VidTex':
+            dpg.configure_item('cbmu_chars', show=False)
+            dpg.configure_item('cbml_chars', show=False)
+            dpg.configure_item('vtx_chars', show=True)
+            dpg.configure_item('msx_chars', show=False)
+            dpg.configure_item('swap', show=False)
+            dpg.configure_item('color0', show=False)
+            dpg.configure_item('charset', show=False)
+            dpg.configure_item('charset2', show=True)
+            dpg.configure_item('c64colors', show=False)
+            dpg.configure_item('msxcolors', show=False)
+            dpg.configure_item('vidtexcolors', show=True)
+            dpg.configure_item('charset2',default_value='VidTex 64')
+            # set_charset('', 'VidTex 64')
+            charset = 'VidTex 64'
+            dpg.configure_item('vcolor8', default_value=modes['VidTex']['palette'][7])
+            pre = 'f'
         else:
             dpg.configure_item('cbmu_chars', show=False)
+            dpg.configure_item('cbml_chars', show=False)
             dpg.configure_item('msx_chars', show=True)
             dpg.configure_item('swap', show=True)
             dpg.configure_item('color0', show=True)
             dpg.configure_item('charset', show=False)
+            dpg.configure_item('charset2', show=False)
             dpg.configure_item('c64colors', show=False)
             dpg.configure_item('msxcolors', show=True)
+            dpg.configure_item('vidtexcolors', show=False)
+            pre = 'b'
         dpg.configure_item('overlay', show=False)
         dpg.configure_item('over_b', tint_color=(128,128,128))
         # dpg.set_value('color2', palette[colors[0]])
@@ -389,8 +473,13 @@ def set_screenmode(sender):
         dpg.set_value('color1', palette[colors[1]])
         dpg.set_value('color2', palette[colors[0]])
         dpg.set_value('color3', palette[colors[0]])
-        pre = 'b' if screen_mode == 'MSX Screen 2 - RetroTerm' else 'd' if charset == 'Upper/GFX' else 'e'
+        curchar = modes[screen_mode]['default'][0]
         select_char(pre+str(modes[screen_mode]['default'][0]))
+        for i in range(0,8*8*4,4):
+            semi_tex[i]=palette[colors[1]][0]/255
+            semi_tex[i+1]=palette[colors[1]][1]/255
+            semi_tex[i+2]=palette[colors[1]][2]/255
+        dpg.set_value("semiimg", semi_tex)
         if clipboard[0] is not None:
             dpg.delete_item('clip')     #Delete clip draw image
             dpg.delete_item('clip_t')   #Delete clip texture
@@ -400,12 +489,26 @@ def set_screenmode(sender):
 def set_charset(sender, app_data):
     global charset, clipboard
     if charset != app_data:
-        dpg.configure_item('cbmu_chars', show= not dpg.get_item_state('cbmu_chars')['visible'])
-        dpg.configure_item('cbml_chars', show= not dpg.get_item_state('cbml_chars')['visible'])
-        pre = 'd' if charset == 'Upper/GFX' else 'e'
-        dpg.configure_item(pre+str(curchar),tint_color=(128,128,128))   # Reset char selection for previous mode
-        charset = app_data
-        pre = 'd' if charset == 'Upper/GFX' else 'e'
+        if screen_mode == 'Commodore 64':
+            dpg.configure_item('cbmu_chars', show= not dpg.get_item_state('cbmu_chars')['visible'])
+            dpg.configure_item('cbml_chars', show= not dpg.get_item_state('cbml_chars')['visible'])
+            pre = 'd' if charset == 'Upper/GFX' else 'e'
+            dpg.configure_item(pre+str(curchar),tint_color=(128,128,128))   # Reset char selection for previous mode
+            charset = app_data
+            pre = 'd' if charset == 'Upper/GFX' else 'e'
+        else:
+            dpg.configure_item('vip_chars', show= not dpg.get_item_state('vip_chars')['visible'])
+            dpg.configure_item('vtx_chars', show= not dpg.get_item_state('vtx_chars')['visible'])
+            pre = 'f' if charset == 'VidTex 64' else 'g'
+            dpg.configure_item(pre+str(curchar),tint_color=(128,128,128))   # Reset char selection for previous mode
+            charset = app_data
+            pre = 'f' if charset == 'VidTex 64' else 'g'
+            if charset == 'VidTex 64':
+                pre = 'f'
+                dpg.configure_item('vcolor8', default_value=modes['VidTex']['palette'][7])
+            else:
+                pre = 'g'
+                dpg.configure_item('vcolor8', default_value=modes['VidTex']['palette'][8])
         select_char(pre+str(modes[screen_mode]['default'][0]))
         sync_matrix()
         if clipboard[0] is not None:
@@ -469,12 +572,18 @@ def drag_handler(sender, app_data):
             if not semimode:
                 x = c*16
                 y = r*16
-                cur = [curchar,colors[0],colors[1]]
+                if dpg.is_mouse_button_down(1):
+                    cur = [modes[screen_mode]['default'][0],colors[0],colors[1]]
+                else:
+                    cur = [curchar,colors[0],colors[1]]
                 if not np.array_equal(matrix[c,r],cur):
                     if not change:
                         tmpmat = matrix.copy()  # Make a copy of the matrix before it gets modified
                         tmpsemimat = semimatrix.copy()
-                    raw_screen[y:y+16, x:x+16] = raw_tile
+                    if dpg.is_mouse_button_down(1):
+                        raw_screen[y:y+16, x:x+16] = raw_def
+                    else:
+                        raw_screen[y:y+16, x:x+16] = raw_tile
                     matrix[c,r] = cur
                     semimatrix[c,r] = 0
                     change = True
@@ -489,12 +598,20 @@ def drag_handler(sender, app_data):
                 x1 = int((dpg.get_mouse_pos()[0]-32)//8)*8
                 y1 = int((dpg.get_mouse_pos()[1]-32)//8)*8
                 quadrant = 2**(3-((((y1//8)%2)*2)|((x1//8)%2)))
-                sch = SemiChars[screen_mode][semimatrix[c,r]|quadrant]
+                if dpg.is_mouse_button_down(1):
+                    sch = SemiChars[screen_mode][semimatrix[c,r]&(~(quadrant)&0xf)]
+                else:
+                    sch = SemiChars[screen_mode][semimatrix[c,r]|quadrant]
+                if screen_mode == 'VidTex':
+                    sch += 32
                 if sch != matrix[c,r,0]:
                     if not change:
                         tmpmat = matrix.copy()  # Make a copy of the matrix before it gets modified
                         tmpsemimat = semimatrix.copy()
-                    semimatrix[c,r] |= quadrant
+                    if  dpg.is_mouse_button_down(1):
+                        semimatrix[c,r] &= ~(quadrant)&0xf
+                    else:
+                        semimatrix[c,r] |= quadrant
                     if sch >= 0x100:
                         sch &= 0xff
                         c0 = colors[1]
@@ -504,12 +621,23 @@ def drag_handler(sender, app_data):
                         c1 = colors[1]
                     cur = [sch,c0,c1]
                     matrix[c,r] = cur
-                    chars = chars_msx if screen_mode == 'MSX Screen 2 - RetroTerm' else chars_cbmu if charset == 'Upper/GFX' else chars_cbml
+                    if screen_mode == 'VidTex':
+                        sch -= 32
+                    if screen_mode == 'MSX Screen 2 - RetroTerm':
+                        chars = chars_msx
+                    elif screen_mode == 'Commodore 64':
+                        chars = chars_cbmu if charset == 'Upper/GFX' else chars_cbml
+                    else:
+                        chars = chars_vtx if charset == 'VidTex 64' else chars_vip
                     tmp_tile = np.zeros((16,16,3),np.float32)
                     tmp_tile[np.where((chars[sch]==[0,0,0]).all(axis=2))] = np.array(palette[c0],dtype=np.float32)/255
                     tmp_tile[np.where((chars[sch]==[1,1,1]).all(axis=2))] = np.array(palette[c1],dtype=np.float32)/255
                     raw_screen[y:y+16, x:x+16] = tmp_tile
                     change = True
+                    dpg.configure_item('char_hover',default_value=f'0x{matrix[c,r,0]:02x}')
+                    old_m = matrix[c,r]
+                    dpg.configure_item('bgcolor', default_value=palette[matrix[c,r,1]])
+                    dpg.configure_item('fgcolor', default_value=palette[matrix[c,r,2]])
     elif dpg.is_item_active('mainimg') and mode == 2:   #Text
         if htype=="mvAppItemType::mvFocusHandler":
             text_c = [c,r]
@@ -523,10 +651,16 @@ def drag_handler(sender, app_data):
                 if not change:
                     tmpmat = matrix.copy()  # Make a copy of the matrix before it gets modified
                     tmpsemimat = semimatrix.copy()
-                chars = chars_msx if screen_mode == 'MSX Screen 2 - RetroTerm' else chars_cbmu if charset == 'Upper/GFX' else chars_cbml
+                if screen_mode == 'MSX Screen 2 - RetroTerm':
+                    chars = chars_msx
+                elif screen_mode == 'Commodore 64':
+                    chars = chars_cbmu if charset == 'Upper/GFX' else chars_cbml
+                else:
+                    chars = chars_vtx if charset == 'VidTex 64' else chars_vip
                 tchar = np.zeros((16,16,3),np.float32)
-                tchar[np.where((chars[cur[0]]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
-                tchar[np.where((chars[cur[0]]==[1,1,1]).all(axis=2))] = np.array(palette[colors[1]],dtype=np.float32)/255
+                ix = cur[0] if screen_mode != 'VidTex' else cur[0]-32
+                tchar[np.where((chars[ix]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
+                tchar[np.where((chars[ix]==[1,1,1]).all(axis=2))] = np.array(palette[colors[1]],dtype=np.float32)/255
 
                 raw_screen[y:y+16, x:x+16] = tchar
                 matrix[c,r] = cur
@@ -660,7 +794,12 @@ def short_handler(sender, data):
 def text_mode(sender, data):
     global text_c, raw_screen, undobuffer, redobuffer,mode, charset
 
-    chars = chars_msx if screen_mode == 'MSX Screen 2 - RetroTerm' else chars_cbmu if charset == 'Upper/GFX' else chars_cbml
+    if screen_mode == 'MSX Screen 2 - RetroTerm':
+        chars = chars_msx
+    elif screen_mode == 'Commodore 64':
+        chars = chars_cbmu if charset == 'Upper/GFX' else chars_cbml
+    else:
+        chars = chars_vtx if charset == 'VidTex 64' else chars_vip
     if not dpg.is_key_down(dpg.mvKey_Control) and not dpg.is_key_down(dpg.mvKey_Alt):
         mc = modes[screen_mode]['geo'][0]-1
         mr = modes[screen_mode]['geo'][1]-1
@@ -679,7 +818,9 @@ def text_mode(sender, data):
                     if charset == 'Upper/GFX':
                         data -= 0x20
                     else:
-                        data -= 0x60 
+                        data -= 0x60
+            elif screen_mode == 'VidTex':
+                data -= 0x20
             undobuffer.append([matrix.copy(),semimatrix.copy()])
             redobuffer.clear()
             cur = [data,colors[0],colors[1]]
@@ -714,6 +855,8 @@ def text_mode(sender, data):
             cur = [def_char,colors[0],colors[1]]
             matrix[text_c[0],text_c[1]] = cur
             tchar = np.zeros((16,16,3),np.float32)
+            if screen_mode == 'VidTex':
+                def_char -=32
             tchar[np.where((chars[def_char]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
             tchar[np.where((chars[def_char]==[1,1,1]).all(axis=2))] = np.array(palette[colors[1]],dtype=np.float32)/255
             x = text_c[0]*16
@@ -743,22 +886,25 @@ def text_mode(sender, data):
 
 #########################
 def get_textures():
-    global chars_msx, chars_cbmu, chars_cbml
-    global raw_tex, pimg, iimg, raw_screen, raw_tile, raw_icons, raw_icons16, raw_prev, dummy_tex, semi_tex
+    global chars_msx, chars_cbmu, chars_cbml, chars_vtx, chars_vip
+    global raw_def, raw_tex, pimg, iimg, raw_screen, raw_tile, raw_icons, raw_icons16, raw_prev, dummy_tex, semi_tex
     pimg = Image.open('assets/splash.gif').convert('RGB')
-    cimg = Image.open('assets/charset-msx.png').convert('RGB')
     iimg = Image.open('assets/icons.png').convert('RGB')
-    cimg = cimg.resize((cimg.size[0]*2,cimg.size[1]*2),resample=Image.Resampling.NEAREST)
     
     dummy_tex = [0,0,0,0]
 
     raw_tex = np.asarray(pimg, dtype=np.float32)/255
-    raw_chars = np.ascontiguousarray(cimg, dtype=np.float32)/255
     icons = np.ascontiguousarray(iimg, dtype=np.float32)/255
 
     # tmp = np.zeros((raw_chars.shape[0],raw_chars.shape[1],3),np.float32)
+    raw_def  = np.zeros((16,16,3))
     raw_tile = np.zeros((16,16,3),np.float32)
     raw_prev = np.zeros((32,32,3),np.float32)
+
+    # MSX retroterm charset
+    cimg = Image.open('assets/charset-msx.png').convert('RGB')
+    cimg = cimg.resize((cimg.size[0]*2,cimg.size[1]*2),resample=Image.Resampling.NEAREST)
+    raw_chars = np.ascontiguousarray(cimg, dtype=np.float32)/255
 
     chars_msx = []
     for j in range(0, raw_chars.shape[0], 16):
@@ -766,6 +912,7 @@ def get_textures():
             chars_msx.append(raw_chars[j:j+16, i:i+16])#(np.reshape(raw_chars[j:j+8, i:i+8], (192)))
     chars_msx = np.asarray(chars_msx).astype(np.float32)
 
+    # C64 charsets
     cimg = Image.open('assets/charset-cbm.gif').convert('RGB')
     cimg = cimg.resize((cimg.size[0]*2,cimg.size[1]*2),resample=Image.Resampling.NEAREST)
     raw_chars = np.ascontiguousarray(cimg, dtype=np.float32)/255
@@ -781,6 +928,30 @@ def get_textures():
         for i in range(0, raw_chars.shape[1], 16):
             chars_cbml.append(raw_chars[j:j+16, i:i+16])#(np.reshape(raw_chars[j:j+8, i:i+8], (192)))
     chars_cbml = np.asarray(chars_cbml).astype(np.float32)
+
+    # Charset VidTex
+    cimg = Image.open('assets/charset-vt.png').convert('RGB')
+    cimg = cimg.resize((cimg.size[0]*2,cimg.size[1]*2),resample=Image.Resampling.NEAREST)
+    raw_chars = np.ascontiguousarray(cimg, dtype=np.float32)/255
+
+    chars_vtx =[]
+    for j in range(0, 16*3, 16):    #ASCII part
+        for i in range(0, raw_chars.shape[1], 16):
+            chars_vtx.append(raw_chars[j:j+16, i:i+16])#(np.reshape(raw_chars[j:j+8, i:i+8], (192)))
+    for j in range(16*7, 16*8, 16): #Semigraphics
+        for i in range(0, 16*16, 16):
+            chars_vtx.append(raw_chars[j:j+16, i:i+16])#(np.reshape(raw_chars[j:j+8, i:i+8], (192)))
+    chars_vtx = np.asarray(chars_vtx).astype(np.float32)
+
+    # Charset VIP Terminal
+    chars_vip =[]
+    for j in range(16*3, 16*6, 16):    #ASCII part
+        for i in range(0, raw_chars.shape[1], 16):
+            chars_vip.append(raw_chars[j:j+16, i:i+16])#(np.reshape(raw_chars[j:j+8, i:i+8], (192)))
+    for j in range(16*7, 16*8, 16): #Semigraphics
+        for i in range(0, 16*16, 16):
+            chars_vip.append(raw_chars[j:j+16, i:i+16])#(np.reshape(raw_chars[j:j+8, i:i+8], (192)))
+    chars_vip = np.asarray(chars_vip).astype(np.float32)
 
     for j in range(0, icons.shape[1],32):
         raw_icons.append(np.ascontiguousarray(icons[0:32, j:j+32]))
@@ -806,6 +977,10 @@ def get_textures():
             dpg.add_raw_texture(width=16, height=16, default_value=t, format=dpg.mvFormat_Float_rgb, tag='cbmu'+str(i))
         for i,t in enumerate(chars_cbml):
             dpg.add_raw_texture(width=16, height=16, default_value=t, format=dpg.mvFormat_Float_rgb, tag='cbml'+str(i))
+        for i,t in enumerate(chars_vtx):
+            dpg.add_raw_texture(width=16, height=16, default_value=t, format=dpg.mvFormat_Float_rgb, tag='vtx'+str(i+32))
+        for i,t in enumerate(chars_vip):
+            dpg.add_raw_texture(width=16, height=16, default_value=t, format=dpg.mvFormat_Float_rgb, tag='vip'+str(i+32))
         for i,t in enumerate(raw_icons):
             dpg.add_raw_texture(width=32, height=32, default_value=t, format=dpg.mvFormat_Float_rgb, tag='i'+str(i))
         for i,t in enumerate(raw_icons16):
@@ -853,9 +1028,13 @@ def open_overlay(sender, app_data):
         pass
 
 def sync_matrix():
-    global raw_screen, raw_tile
-    chars = chars_msx if screen_mode == 'MSX Screen 2 - RetroTerm' else chars_cbmu if charset == 'Upper/GFX' else chars_cbml
-    # for i,cell in enumerate(matrix):
+    global raw_screen, raw_def, raw_tile
+    if screen_mode == 'MSX Screen 2 - RetroTerm':
+        chars = chars_msx
+    elif screen_mode == 'Commodore 64':
+        chars = chars_cbmu if charset == 'Upper/GFX' else chars_cbml
+    else:
+        chars = chars_vtx if charset == 'VidTex 64' else chars_vip    # for i,cell in enumerate(matrix):
     mc = modes[screen_mode]['geo'][0]
     mr = modes[screen_mode]['geo'][1]
     for i in range(mr):
@@ -863,11 +1042,18 @@ def sync_matrix():
             x = (j)*16
             y = (i)*16
             cell = matrix[j,i]
-            raw_tile[np.where((chars[cell[0]]==[0,0,0]).all(axis=2))] = np.array(palette[cell[1]],dtype=np.float32)/255
-            raw_tile[np.where((chars[cell[0]]==[1,1,1]).all(axis=2))] = np.array(palette[cell[2]],dtype=np.float32)/255
+            ix = cell[0] if screen_mode != 'VidTex' else cell[0]-32
+            fg = palette[cell[2]] if charset != 'VidTex 64' else palette[cell[2]] if cell[2] < 8 else palette[7]
+            raw_tile[np.where((chars[ix]==[0,0,0]).all(axis=2))] = np.array(palette[cell[1]],dtype=np.float32)/255
+            raw_tile[np.where((chars[ix]==[1,1,1]).all(axis=2))] = np.array(fg,dtype=np.float32)/255
             raw_screen[y:y+16, x:x+16] = raw_tile
-    raw_tile[np.where((chars[curchar]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
-    raw_tile[np.where((chars[curchar]==[1,1,1]).all(axis=2))] = np.array(palette[colors[1]],dtype=np.float32)/255
+    ix = curchar if screen_mode != 'VidTex' else curchar-32
+    fg = palette[colors[1]] if charset != 'VidTex 64' else palette[colors[1]] if colors[1] < 8 else palette[7]
+    raw_tile[np.where((chars[ix]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
+    raw_tile[np.where((chars[ix]==[1,1,1]).all(axis=2))] = np.array(fg,dtype=np.float32)/255
+    ix = modes[screen_mode]['default'][0] if screen_mode != 'VidTex' else modes[screen_mode]['default'][0]-32
+    raw_def[np.where((chars[ix]==[0,0,0]).all(axis=2))] = np.array(palette[colors[0]],dtype=np.float32)/255
+    raw_def[np.where((chars[ix]==[1,1,1]).all(axis=2))] = np.array(fg,dtype=np.float32)/255
 
 # Save file
 def save_file(sender, app_data, user_data):
@@ -903,13 +1089,41 @@ def open_seq(sender, app_data, user_data):
             if not char:
                 break
             char = char[0]
-            if char == 255:    # CMD_ON
-                cmd = True
-            if char == 254:    # CMD_OFF
-                cmd = False
+            if screen_mode != 'VidTex':
+                if char == 255:    # CMD_ON
+                    cmd = True
+                if char == 254:    # CMD_OFF
+                    cmd = False
+            else:   # VidTex escape seqs
+                if char == 0x1b:
+                    char = fo.read(1)
+                    if not char:
+                        break
+                    if char[0] == ord('G'):
+                        char = fo.read(1)
+                        if not char:
+                            break
+                        continue
+                    elif char[0] == ord('k'):
+                        char = fo.read(1)
+                        if not char:
+                            break
+                        background = char[0] & 15
+                        colors[0] = background
+                        colors[1] = char[0] >> 4
+                        continue
+                    elif char[0] == ord('j'):
+                        c = 0
+                        r = 0
+                        background = colors[0]
+                        dpg.set_value('color2', palette[colors[0]])
+                        matrix[:] = [32,colors[0],colors[1]]
+                        continue
             if cmd:
                 if char == 0x90:
                     char = fo.read(3)
+                    if not char:
+                        break
                     background = char[2]-(1 if screen_mode != 'Commodore 64' else 0)
                     colors[0] = background
                     border = char[1]-(1 if screen_mode != 'Commodore 64' else 0)
@@ -917,7 +1131,7 @@ def open_seq(sender, app_data, user_data):
                     dpg.set_value('color2', palette[background])
                     dpg.set_value('color3', palette[border])
             else:
-                if screen_mode != 'Commodore 64':
+                if screen_mode == 'MSX Screen 2 - RetroTerm':
                     if char == 1:   # Colors/Extended gfx
                         char = fo.read(1)
                         if not char:
@@ -963,7 +1177,7 @@ def open_seq(sender, app_data, user_data):
                         if c > mc-1:
                             c = 0
                             r = r+1 if r < mr-1 else r
-                else:
+                elif screen_mode == 'Commodore 64':
                     if char.to_bytes(1,'big') in petcolors:    #Colors
                         colors[1] = petcolors.index(char.to_bytes(1,'big'))
                         dpg.set_value('color1', palette[colors[1]])
@@ -1019,6 +1233,20 @@ def open_seq(sender, app_data, user_data):
                         if c > mc-1:
                             c = 0
                             r = r+1 if r < mr-1 else r
+                else:
+                    if char >= 128:
+                        colors[1] = (char & 0x70) >> 4
+                        char &= 0x8f
+                    elif char == 0x0d: #CR
+                        c = 0
+                        r = r+1 if r < mr-1 else mr-1
+                        continue
+                    matrix[c,r]=[char,colors[0],colors[1]]
+                    c += 1
+                    if c > mc-1:
+                        c = 0
+                        r = r+1 if r < mr-1 else r
+
 
 
         sync_matrix()
@@ -1063,14 +1291,18 @@ def save_seq(filename):
                 bin+= int(c-64).to_bytes(1,'big')
         return bin
 
-
-
     output = deque()
-
     if screen_mode == 'Commodore 64':
         bin = b'\xff\x90\x00'+border.to_bytes(1,'big')+background.to_bytes(1,'big')+b'\xfe\x93'+b'\x8e' if charset == 'Upper/GFX' else b'\x0e'  # Set Text mode, black border, background color, clear screen, set charset
         current = [modes[screen_mode]['default'][0],background,-1]
         empty = [modes[screen_mode]['default'][0],background]
+    elif screen_mode == 'VidTex':
+        co = int(matrix[0,0][2])*16
+        bin = b'\x1bk'+(co+background).to_bytes(1,'big')+b'\x1bj'
+        current = [modes[screen_mode]['default'][0],background,-1]
+        empty = [modes[screen_mode]['default'][0],background]
+        if len(np.extract(matrix[:,:,0]>0x80,matrix)) > 0:
+            bin += b'\x1bG4'
     else:
         bg = background+1
         bo = border+1
@@ -1089,7 +1321,7 @@ def save_seq(filename):
         for col in range(mc):
             bin = b''
             cell = matrix[col,r].copy()
-            if screen_mode != 'Commodore 64':
+            if screen_mode == 'MSX Screen 2 - RetroTerm':
                 cell[1:] += 1
             if not np.array_equal(cell,current):
                 #bin += buffer
@@ -1101,7 +1333,7 @@ def save_seq(filename):
                 #     bin += b'\x1a' if rvs else b'\x19'
                 #     rvs = not rvs
                 # else:
-                if screen_mode != 'Commodore 64':
+                if screen_mode == 'MSX Screen 2 - RetroTerm':
                     if f != current[2]:     #FG color
                         bin += b'\x01'+int(f+(16*rvs)).to_bytes(1,'big')
                     if b != current[1]:     #BG color
@@ -1115,6 +1347,19 @@ def save_seq(filename):
                             bin += int(c).to_bytes(1,'big')
                     else:
                         buffer += b' '
+                elif screen_mode == 'VidTex':
+                    if f != current[2] and c < 0x80:
+                        bin += b'\x1bk'+(int(f*16)+background).to_bytes(1,'big')
+                    if c != default:
+                        if c < 0x80:
+                            bin += int(c).to_bytes(1,'big')
+                        else:
+                            bin += int((f*16)+c).to_bytes(1,'big')
+                    else:
+                        if c < 0x80:
+                            buffer += int(c).to_bytes(1,'big')
+                        else:
+                            buffer += int((f*16)+c).to_bytes(1,'big')
                 else:
                     if f != current[2]:     #FG color
                         bin += petcolors[f]
@@ -1124,7 +1369,7 @@ def save_seq(filename):
                         buffer += int(c).to_bytes(1,'big')
                 output.append(bin)
                 current = [c,b,f]
-                if col == mc-1 and r == mr-1 and buffer == b'':   # Character on the last screen cell?
+                if col == mc-1 and r == mr-1 and buffer == b'' and screen_mode != 'VidTex':   # Character on the last screen cell?
                     output.pop()    # Discard last cell
                     penult = output.pop()
                     if len(penult) > 1 and len(set(penult)) == 1 and penult[0] != 1:
@@ -1163,13 +1408,18 @@ def save_seq(filename):
                 rvs = False
             else:
                 output.append(buffer)
-                if screen_mode != 'Commodore 64':
+                if screen_mode == 'MSX Screen 2 - RetroTerm':
                     if cell[0] < 0x20:
                         output.append(b'\x01'+int(cell[0]+0x40).to_bytes(1,'big'))
                     elif cell[0] in (254,255):
                         output.append(b'\x01'+int(cell[0]-0x9e).to_bytes(1,'big'))
                     else:
                         output.append(int(cell[0]).to_bytes(1,'big'))
+                elif screen_mode == 'VidTex':
+                    if c < 0x80:
+                        output.append(int(c).to_bytes(1,'big'))
+                    else:
+                        output.append(int((f*16)+c).to_bytes(1,'big'))
                 else:
                     output.append(scr2pet(c))
                 buffer = b''
@@ -1225,12 +1475,13 @@ def save_tml(filename):
             tml += TMLchars[screen_mode].get(c,f'<CHR c={c+64}>')   # -> 160-191
         return tml
 
-
-
     output = deque()
-
     if screen_mode == 'Commodore 64':
         tml = f'<TEXT border={border} background={background}><CLR>{"<UPPER>" if charset == "Upper/GFX" else "<LOWER>"}'  # Set Text mode, black border, background color, clear screen, set charset
+        current = [modes[screen_mode]['default'][0],background,-1]
+        empty = [modes[screen_mode]['default'][0],background]
+    elif screen_mode == 'VidTex':
+        tml = f'<TEXT border={border} background={background}><CLR>'  # Set Text mode, black border, background color, clear screen
         current = [modes[screen_mode]['default'][0],background,-1]
         empty = [modes[screen_mode]['default'][0],background]
     else:
@@ -1251,7 +1502,7 @@ def save_tml(filename):
         for col in range(mc):
             tml = ''
             cell = matrix[col,r].copy()
-            if screen_mode != 'Commodore 64':
+            if screen_mode == 'MSX Screen 2 - RetroTerm':
                 cell[1:] += 1
             if not np.array_equal(cell,current):
                 #bin += buffer
@@ -1263,7 +1514,7 @@ def save_tml(filename):
                 #     bin += b'\x1a' if rvs else b'\x19'
                 #     rvs = not rvs
                 # else:
-                if screen_mode != 'Commodore 64':
+                if screen_mode == 'MSX Screen 2 - RetroTerm':
                     if f != current[2]:     #FG color
                         tml +=f'{"<PAPER c="+str(f)+">" if rvs else TMLColors[screen_mode][f]}'
                     if b != current[1]:     #BG color
@@ -1280,6 +1531,13 @@ def save_tml(filename):
                                 tml += chr(c)
                     else:
                         buffer += ' '
+                elif screen_mode == 'VidTex':
+                    if f != current[2]:     #FG color
+                        tml += TMLColors[screen_mode][f]
+                    if c != default:
+                        tml += TMLchars[screen_mode].get(c,chr(c)) if c < 128 else TMLchars[screen_mode].get(c,f'<CHR c={c}>')
+                    else:
+                        buffer += TMLchars[screen_mode].get(c,chr(c)) if c < 128 else TMLchars[screen_mode].get(c,f'<CHR c={c}>')
                 else:
                     if f != current[2]:     #FG color
                         tml += TMLColors[screen_mode][f]
@@ -1335,7 +1593,7 @@ def save_tml(filename):
                 rvs = False
             else:
                 output.append(buffer)
-                if screen_mode != 'Commodore 64':
+                if screen_mode == 'MSX Screen 2 - RetroTerm':
                     if cell[0] < 0x20:
                         output.append(TMLchars[screen_mode].get(cell[0],f'<CHR c=1><CHR c={c+0x40}>'))
                     elif cell[0] in (254,255):
@@ -1345,6 +1603,8 @@ def save_tml(filename):
                             output.append(TMLchars[screen_mode].get(c,f'<CHR c={c}>'))
                         else:
                             output.append(chr(cell[0]))
+                elif screen_mode == 'VidTex':
+                    output.append(TMLchars[screen_mode].get(c,chr(c)) if c < 128 else TMLchars[screen_mode].get(c,f'<CHR c={c}>'))
                 else:
                     output.append(scr2tml(c))   #<<<<<<
                 buffer = ''
@@ -1416,7 +1676,6 @@ with dpg.window(tag="MainW", no_scrollbar= True):
         dpg.add_item_focus_handler(callback=drag_handler)
         dpg.add_item_deactivated_handler(callback=release_handler)
         dpg.add_item_activated_handler(callback=click_handler)
-
     with dpg.menu_bar():
         with dpg.menu(label="File"):
             dpg.add_menu_item(label='New', callback=new_work)
@@ -1428,7 +1687,7 @@ with dpg.window(tag="MainW", no_scrollbar= True):
             dpg.add_menu_item(label='Open overlay...', callback=show_dialog)
             dpg.add_menu_item(label="Quit", callback= lambda: dpg.configure_item("quit_id", show = True))
         with dpg.menu(label="Mode"):
-            dpg.add_radio_button(('MSX Screen 2 - RetroTerm','Commodore 64'), default_value='MSX',tag='s_mode', callback=set_screenmode)
+            dpg.add_radio_button(('MSX Screen 2 - RetroTerm','Commodore 64','VidTex'), default_value='MSX',tag='s_mode', callback=set_screenmode)
         with dpg.menu(label="Help"):
             # dpg.add_menu_item(label="Help", callback=print_me)
             dpg.add_menu_item(label="About...", callback= show_about)
@@ -1529,8 +1788,21 @@ with dpg.window(tag="MainW", no_scrollbar= True):
                         for i in range(0,16):
                                 dpg.add_image_button(texture_tag='cbml'+str((j*16)+i), width=16, height=16, indent=-1, tag='e'+str((j*16)+i),frame_padding=1,
                                                     callback=select_char, tint_color=(128,128,128))
+            with dpg.group(tag='vtx_chars', show=False):
+                for j in range(0,6):
+                    with dpg.group(horizontal=True, horizontal_spacing=0, pos=(700,50+(17*j))):
+                        for i in range(0,16):
+                                dpg.add_image_button(texture_tag='vtx'+str(32+(j*16)+i), width=16, height=16, indent=-1, tag='f'+str(32+(j*16)+i),frame_padding=1,
+                                                    callback=select_char, tint_color=(128,128,128))
+            with dpg.group(tag='vip_chars', show=False):
+                for j in range(0,6):
+                    with dpg.group(horizontal=True, horizontal_spacing=0, pos=(700,50+(17*j))):
+                        for i in range(0,16):
+                                dpg.add_image_button(texture_tag='vip'+str(32+(j*16)+i), width=16, height=16, indent=-1, tag='g'+str(32+(j*16)+i),frame_padding=1,
+                                                    callback=select_char, tint_color=(128,128,128))
             dpg.add_image('prevtile', width=32, height=32, pos=(800,335))
             dpg.add_combo(['Upper/GFX','Lower/Upper'], label='Charset',default_value='Upper/GFX',tag='charset',pos=(850,350),width=100,show=False, callback=set_charset)
+            dpg.add_combo(['VidTex 64','VIP Terminal XL'], label='Charset',default_value='VidTex 64',tag='charset2',pos=(850,350),width=100,show=False, callback=set_charset)
             dpg.add_text('0x20',tag='prevcode', pos=(802,369))
             dpg.add_color_button(palette[colors[0]], tag='color0', pos=(725,351), width=32, height=32, no_alpha=True)
             dpg.add_color_button(palette[colors[1]], tag='color1', pos=(741,335), width=32, height=32, no_alpha=True)
@@ -1544,6 +1816,9 @@ with dpg.window(tag="MainW", no_scrollbar= True):
             with dpg.group(horizontal=True, pos=(700,400), horizontal_spacing=0, tag='c64colors', show=False):
                 for i,c in enumerate(modes['Commodore 64']['palette']):
                     c_buttons.append(dpg.add_color_button(c, tag='ccolor'+str(i), width=18, height=32, no_alpha=True))
+            with dpg.group(horizontal=True, pos=(700,400), horizontal_spacing=0, tag='vidtexcolors', show=False):
+                for i,c in enumerate(modes['VidTex']['palette']):
+                    c_buttons.append(dpg.add_color_button(c, tag='vcolor'+str(i), width=18, height=32, no_alpha=True))
             with dpg.item_handler_registry(tag='phandler'):
                 dpg.add_item_clicked_handler(0, callback=set_color)
                 dpg.add_item_clicked_handler(1, callback=set_color)
